@@ -19,7 +19,7 @@ class LLMError(RuntimeError):
 
 PROVIDERS = {
     "gemini": {"url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-               "key_env": "GEMINI_API_KEY", "model": "gemini-2.5-flash"},
+               "key_env": "GEMINI_API_KEY", "model": "gemini-3.8-flash"},
     "groq": {"url": "https://api.groq.com/openai/v1/chat/completions",
              "key_env": "GROQ_API_KEY", "model": "llama-3.3-70b-versatile"},
     "openrouter": {"url": "https://openrouter.ai/api/v1/chat/completions",
@@ -36,7 +36,7 @@ def default_model(provider: str) -> str:
     return PROVIDERS[provider]["model"]
 
 
-def _post(url: str, headers: dict, body: dict, timeout: int, retries: int = 3) -> dict:
+def _post(url: str, headers: dict, body: dict, timeout: int, retries: int = 2) -> dict:
     data = json.dumps(body).encode()
     for attempt in range(retries + 1):
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **headers})
@@ -47,16 +47,22 @@ def _post(url: str, headers: dict, body: dict, timeout: int, retries: int = 3) -
             detail = e.read().decode(errors="replace")[:500]
             if e.code in (429, 500, 502, 503, 529) and attempt < retries:   # free tiers often return 429
                 wait = float(e.headers.get("Retry-After") or 2 ** (attempt + 1))
-                time.sleep(min(wait, 30))
+                time.sleep(min(wait, 10))
                 continue
             raise LLMError(f"HTTP {e.code}: {detail}")
-        except urllib.error.URLError as e:
-            raise LLMError(f"Cannot reach LLM endpoint: {e.reason}")
+        except (TimeoutError, OSError) as e:      # read timeout / connection reset (URLError is an OSError too)
+            reason = getattr(e, "reason", e)
+            if isinstance(e, TimeoutError) or isinstance(reason, TimeoutError):
+                if attempt < retries:
+                    continue
+                raise LLMError(f"The model did not answer within {timeout}s (tried {retries + 1} times). "
+                               "Try a faster model (LLM_MODEL) or check the provider's status and quota.")
+            raise LLMError(f"Cannot reach LLM endpoint: {reason}")
     raise LLMError("LLM request failed after retries.")
 
 
 def chat(messages: list[dict], provider: str, model: str | None = None, temperature: float = 0.0,
-         timeout: int = 120) -> dict:
+         timeout: int = 60) -> dict:
     """messages: [{'role': 'system'|'user'|'assistant', 'content': str}]. Returns {text, prompt_tokens, completion_tokens}."""
     if provider not in PROVIDERS:
         raise LLMError(f"Unknown provider '{provider}'. Options: {', '.join(PROVIDERS)}")
@@ -81,7 +87,24 @@ def chat(messages: list[dict], provider: str, model: str | None = None, temperat
         return {"text": text, "prompt_tokens": u.get("input_tokens", 0), "completion_tokens": u.get("output_tokens", 0)}
 
     headers = {"Authorization": f"Bearer {key}"} if key else {}
-    out = _post(cfg["url"], headers, {"model": model, "messages": messages, "temperature": temperature}, timeout)
+    # Optional fallbacks: LLM_FALLBACK_MODELS="model-a,model-b". Tried in order when the main model is overloaded
+    # (HTTP 503/429), unavailable (404) or too slow.
+    fallbacks = [m.strip() for m in os.getenv("LLM_FALLBACK_MODELS", "").split(",") if m.strip()]
+    out, last_err = None, None
+    for m in [model] + [f for f in fallbacks if f != model]:
+        body = {"model": m, "messages": messages, "temperature": temperature}
+        effort = os.getenv("LLM_REASONING_EFFORT")   # optional, e.g. "low": less "thinking" = faster on reasoning models
+        if effort:
+            body["reasoning_effort"] = effort
+        try:
+            out = _post(cfg["url"], headers, body, timeout)
+            break
+        except LLMError as e:
+            last_err = e
+            if not any(t in str(e) for t in ("HTTP 503", "HTTP 429", "HTTP 404", "did not answer")):
+                raise
+    if out is None:
+        raise last_err
     try:
         text = out["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError):
