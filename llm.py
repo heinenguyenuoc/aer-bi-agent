@@ -87,11 +87,24 @@ def chat(messages: list[dict], provider: str, model: str | None = None, temperat
         return {"text": text, "prompt_tokens": u.get("input_tokens", 0), "completion_tokens": u.get("output_tokens", 0)}
 
     headers = {"Authorization": f"Bearer {key}"} if key else {}
-    body = {"model": model, "messages": messages, "temperature": temperature}
-    effort = os.getenv("LLM_REASONING_EFFORT")     # optional, e.g. "low": less "thinking" = faster on reasoning models
-    if effort:
-        body["reasoning_effort"] = effort
-    out = _post(cfg["url"], headers, body, timeout)
+    # Optional fallbacks: LLM_FALLBACK_MODELS="model-a,model-b". Tried in order when the main model is overloaded
+    # (HTTP 503/429), unavailable (404) or too slow.
+    fallbacks = [m.strip() for m in os.getenv("LLM_FALLBACK_MODELS", "").split(",") if m.strip()]
+    out, last_err = None, None
+    for m in [model] + [f for f in fallbacks if f != model]:
+        body = {"model": m, "messages": messages, "temperature": temperature}
+        effort = os.getenv("LLM_REASONING_EFFORT")   # optional, e.g. "low": less "thinking" = faster on reasoning models
+        if effort:
+            body["reasoning_effort"] = effort
+        try:
+            out = _post(cfg["url"], headers, body, timeout)
+            break
+        except LLMError as e:
+            last_err = e
+            if not any(t in str(e) for t in ("HTTP 503", "HTTP 429", "HTTP 404", "did not answer")):
+                raise
+    if out is None:
+        raise last_err
     try:
         text = out["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError):
