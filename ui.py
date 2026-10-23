@@ -116,6 +116,12 @@ def pastel_chart(df: pd.DataFrame):
     """Pastel Altair chart: area for time series, bars otherwise (horizontal when labels are long). None = not chartable."""
     if df.shape[1] < 2 or not (2 <= len(df) <= 200):
         return None
+    # long format (category, year, value) -> pivot to one column per category so each country becomes one line
+    if df.shape[1] == 3 and not pd.api.types.is_numeric_dtype(df.iloc[:, 0]) and pd.api.types.is_integer_dtype(df.iloc[:, 1]) \
+            and df.iloc[:, 1].between(1900, 2100).all() and pd.api.types.is_numeric_dtype(df.iloc[:, 2]):
+        c, y, v = df.columns
+        df = df.pivot_table(index=y, columns=c, values=v, aggfunc="first").reset_index()
+        df.columns = [str(x) for x in df.columns]
     xcol = df.columns[0]
     ycols = [c for c in df.columns[1:] if pd.api.types.is_numeric_dtype(df[c]) and not pd.api.types.is_bool_dtype(df[c])]
     if not ycols:
