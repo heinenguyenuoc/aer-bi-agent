@@ -29,7 +29,7 @@ export GEMINI_API_KEY=...                   # or GROQ_API_KEY, see below
 streamlit run app.py
 ```
 
-No API key yet? Pick the `mock` provider (admin sidebar) to see the UI; it only returns one fixed SQL query.
+No API key yet? Pick the `mock` provider (admin sidebar) to see the UI; it only returns one fixed SQL query. For UI work you can slow it down or change its query with `LLM_MOCK_DELAY` (seconds) and `LLM_MOCK_SQL`.
 
 ### Choosing a free LLM
 - **Gemini**: get a key in Google AI Studio and set `GEMINI_API_KEY`.
@@ -92,6 +92,8 @@ If you need it running continuously (for example a monthly data-refresh cron), u
 ## Project layout
 ```
 app.py                    Streamlit: Ask page + Admin (locked by ADMIN_PASSWORD)
+ui.py                     theme (Quicksand + pastel), number formatting, pastel charts, Lottie loader
+assets/loader.json        Lottie loading animation
 landing.html              static landing page for GitHub Pages / portfolio
 config.yaml               paths, limits, default provider
 data_dictionary.yaml      semantic layer: tables, columns, units, metrics, rules, few-shot examples

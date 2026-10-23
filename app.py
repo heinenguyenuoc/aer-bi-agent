@@ -12,11 +12,13 @@ import pathlib
 import pandas as pd
 import streamlit as st
 
+import ui
 from agent import llm
 from agent.drift import check, load_dictionary
 from agent.pipeline import Agent, load_config
 
 st.set_page_config(page_title="Alberta Energy BI Agent", page_icon="⛽", layout="wide")
+ui.inject_css()
 
 # Streamlit Cloud secrets -> environment variables (so llm.py can read the keys). Ignored if there are no secrets.
 try:
@@ -65,7 +67,7 @@ def is_admin() -> bool:
 
 # ---------------------------------------------------------------- sidebar
 with st.sidebar:
-    st.title("⛽ Energy BI Agent")
+    ui.brand_sidebar()
     pages = ["Ask", "Admin"]
     page = st.radio("Page", pages, label_visibility="collapsed")
     st.divider()
@@ -81,16 +83,19 @@ with st.sidebar:
     st.caption("This demo runs on **synthetic data** (fictional operators, simulated volumes).")
 
 # ---------------------------------------------------------------- start agent
+boot = st.empty()      # fixed slot, so the page layout does not shift between the first run and later runs
 if "booted" not in st.session_state:
-    with st.status("Starting the agent (loading data and data dictionary)...", expanded=False) as status:
-        try:
-            agent = get_agent(provider, model)
-            status.update(label="Agent ready", state="complete")
-            st.session_state["booted"] = True
-        except Exception as e:
-            status.update(label="Startup failed", state="error")
-            st.error(f"Could not start the agent: {e}")
-            st.stop()
+    with boot.container():
+        with st.status("Starting the agent (loading data and data dictionary)...", expanded=False) as status:
+            try:
+                agent = get_agent(provider, model)
+                status.update(label="Agent ready", state="complete")
+                st.session_state["booted"] = True
+            except Exception as e:
+                status.update(label="Startup failed", state="error")
+                st.error(f"Could not start the agent: {e}")
+                st.stop()
+    boot.empty()
 else:
     try:
         agent = get_agent(provider, model)
@@ -108,14 +113,13 @@ def show_result(res, key: str) -> None:
         if res.sql and is_admin():
             st.code(res.sql, language="sql")
         return
-    st.caption(f"{len(res.df):,} rows · {res.latency_ms} ms · {res.attempts} attempt(s) · "
-               f"{res.prompt_tokens + res.completion_tokens} tokens")
-    st.dataframe(res.df, width='stretch', hide_index=True)
+    st.caption(f"{len(res.df):,} rows · {res.latency_ms / 1000:.1f}s · {res.attempts} attempt(s) · "
+               f"{res.prompt_tokens + res.completion_tokens:,} tokens")
     df = res.df
-    if 2 <= df.shape[1] <= 4 and 2 <= len(df) <= 200 and pd.api.types.is_numeric_dtype(df.iloc[:, -1]):
-        x = df.set_index(df.columns[0])[df.columns[1:]].select_dtypes("number")
-        if not x.empty:
-            (st.line_chart if pd.api.types.is_datetime64_any_dtype(df.iloc[:, 0]) else st.bar_chart)(x)
+    chart = ui.pastel_chart(df)
+    if chart is not None:
+        st.altair_chart(chart, width="stretch")
+    st.dataframe(ui.style_df(df), width='stretch', hide_index=True)
     with st.expander("SQL"):
         st.code(res.sql, language="sql")
         for bad_sql, err in res.history:
@@ -132,12 +136,15 @@ def show_result(res, key: str) -> None:
 
 # ---------------------------------------------------------------- Ask
 if page == "Ask":
-    st.header("Ask the data in plain English")
+    ui.hero()
     st.caption(f"Data from {agent.coverage['min_month']} to {agent.coverage['max_month']} · "
                f"units: oil/water in m³, gas in e³m³ (thousand m³). English questions work best.")
     st.session_state.setdefault("history", [])
-    cols = st.columns(len(SAMPLES))
-    clicked = next((s for c, s in zip(cols, SAMPLES) if c.button(s, width='stretch')), None)
+    clicked = None
+    for row in (SAMPLES[:3], SAMPLES[3:]):
+        for col, sample in zip(st.columns(3), row):
+            if col.button(sample, width="stretch", key=f"sample_{sample}"):
+                clicked = sample
     question = st.chat_input("Ask a question about wells, facilities, production, flaring, prices...") or clicked
 
     if question:
@@ -147,12 +154,15 @@ if page == "Ask":
         elif not is_admin() and agent.log.count_today() >= MAX_PER_DAY:
             st.warning("The demo has reached today's question limit (to stay within the free API quota). Please come back tomorrow.")
         else:
-            with st.spinner("Generating and running SQL..."):
-                st.session_state["history"].append((question, agent.ask(question)))
+            loader = st.empty()
+            ui.show_loader(loader)
+            result = agent.ask(question)
+            loader.empty()
+            st.session_state["history"].append((question, result))
     for i, (q, res) in reversed(list(enumerate(st.session_state["history"]))):
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar="🙋"):
             st.write(q)
-        with st.chat_message("assistant"):
+        with st.chat_message("assistant", avatar="⛽"):
             show_result(res, str(i))
 
 # ---------------------------------------------------------------- Admin
@@ -175,7 +185,7 @@ else:
         st.dataframe(agent.log.recent(200), width='stretch', hide_index=True)
     with t2:
         stats = agent.log.stats()
-        st.dataframe(stats, width='stretch', hide_index=True)
+        st.dataframe(ui.style_df(stats), width='stretch', hide_index=True)
         if stats.empty:
             st.info("No queries yet.")
         st.caption(f"Today (UTC): {agent.log.count_today()}/{MAX_PER_DAY} questions. Token columns show usage; "

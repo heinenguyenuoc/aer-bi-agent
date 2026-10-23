@@ -70,7 +70,9 @@ def chat(messages: list[dict], provider: str, model: str | None = None, temperat
     model = model or cfg["model"]
 
     if provider == "mock":
-        return {"text": "```sql\nSELECT COUNT(*) AS wells FROM dim_well\n```", "prompt_tokens": 0, "completion_tokens": 0}
+        time.sleep(float(os.getenv("LLM_MOCK_DELAY", "0")))     # demo/testing: simulate a slow model
+        sql = os.getenv("LLM_MOCK_SQL", "SELECT COUNT(*) AS wells FROM dim_well")
+        return {"text": f"```sql\n{sql}\n```", "prompt_tokens": 0, "completion_tokens": 0}
 
     key = os.getenv(cfg["key_env"], "") if cfg["key_env"] else ""
     if cfg["key_env"] and not key:
