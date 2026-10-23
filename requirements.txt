@@ -1,0 +1,6 @@
+duckdb>=1.1
+sqlglot>=25
+pyyaml>=6
+pandas>=2
+numpy>=1.26
+streamlit>=1.40

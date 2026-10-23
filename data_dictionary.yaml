@@ -1,0 +1,150 @@
+# Data dictionary = "semantic layer" của agent. Chất lượng text-to-SQL phụ thuộc chủ yếu vào file này.
+# Agent đọc file này để dựng prompt; drift checker so file này với schema DuckDB thật.
+
+database: DuckDB (SQL dialect duckdb)
+units:
+  oil_water: "m3 (cubic metres) per month"
+  gas: "e3m3 = thousand cubic metres (1 e3m3 = 1000 m3) per month"
+  conversions: "1 m3 oil = 6.2898 bbl; 1 e3m3 gas = 35.3147 mcf"
+
+time_rules:
+  - "production_month is the first day of the month (DATE). 'Latest month' = MAX(production_month) of the table, NOT current_date."
+  - "'Last year' / 'YoY' means the same month one year earlier: production_month - INTERVAL 1 YEAR."
+  - "'2025' means production_month between 2025-01-01 and 2025-12-01 (use year(production_month) = 2025)."
+
+tables:
+  dim_operator:
+    description: "Operators (companies) licensed to operate wells and facilities. One row per operator."
+    columns:
+      operator_id: {type: INTEGER, description: "Primary key"}
+      ba_code: {type: VARCHAR, description: "Business Associate code (4 characters), as in AER ST104"}
+      operator_name: {type: VARCHAR, description: "Company name"}
+      hq_city: {type: VARCHAR, description: "Head office city (Calgary, Edmonton, Red Deer)"}
+
+  dim_field:
+    description: "Oil and gas fields. One row per field."
+    columns:
+      field_id: {type: INTEGER, description: "Primary key"}
+      field_name: {type: VARCHAR, description: "Field name, e.g. Pembina, Cold Lake"}
+      region: {type: VARCHAR, description: "Broad region of Alberta, e.g. Peace Country, Central Alberta"}
+
+  dim_facility:
+    description: "Batteries (oil/gas production facilities that collect production from wells). One row per facility."
+    columns:
+      facility_id: {type: VARCHAR, description: "Primary key, Petrinex-style reporting facility ID (ABBT + 7 digits)"}
+      facility_name: {type: VARCHAR, description: "Facility name"}
+      facility_type: {type: VARCHAR, description: "'Oil Battery' or 'Gas Battery'"}
+      operator_id: {type: INTEGER, description: "FK -> dim_operator.operator_id"}
+      field_id: {type: INTEGER, description: "FK -> dim_field.field_id"}
+
+  dim_well:
+    description: "Wells. One row per well (identified by UWI)."
+    columns:
+      well_id: {type: VARCHAR, description: "Primary key. UWI (unique well identifier), e.g. 100/06-12-045-05W5/00"}
+      licence_number: {type: INTEGER, description: "AER well licence number"}
+      operator_id: {type: INTEGER, description: "FK -> dim_operator.operator_id"}
+      field_id: {type: INTEGER, description: "FK -> dim_field.field_id"}
+      fluid: {type: VARCHAR, description: "Main fluid: 'Oil', 'Gas' or 'Crude Bitumen'"}
+      is_horizontal: {type: BOOLEAN, description: "TRUE for horizontal wells, FALSE for vertical"}
+      status: {type: VARCHAR, description: "'Producing', 'Suspended' or 'Abandoned'"}
+      spud_date: {type: DATE, description: "Date drilling started"}
+      total_depth_m: {type: INTEGER, description: "Total depth in metres"}
+      facility_id: {type: VARCHAR, description: "FK -> dim_facility.facility_id (battery the well reports to)"}
+
+  fact_well_production_monthly:
+    description: >
+      Monthly production per well (SYNTHETIC ONLY: real well-level monthly volumes are not freely available in bulk).
+      One row per well per month that the well produced. Grain: (well_id, production_month).
+    columns:
+      well_id: {type: VARCHAR, description: "FK -> dim_well.well_id"}
+      production_month: {type: DATE, description: "First day of the production month"}
+      oil_m3: {type: DOUBLE, unit: m3, description: "Oil (or bitumen, or condensate for gas wells) produced"}
+      gas_e3m3: {type: DOUBLE, unit: e3m3, description: "Gas produced"}
+      water_m3: {type: DOUBLE, unit: m3, description: "Water produced"}
+      hours_on: {type: INTEGER, description: "Hours the well was on production in the month (max about 744)"}
+
+  fact_facility_monthly:
+    description: >
+      Monthly volumes per battery, with flaring and venting (same columns as AER ST60).
+      Grain: (facility_id, production_month). Facility volumes already equal the sum of their wells' volumes,
+      so never add this table and fact_well_production_monthly together.
+    columns:
+      facility_id: {type: VARCHAR, description: "FK -> dim_facility.facility_id"}
+      production_month: {type: DATE, description: "First day of the month"}
+      oil_prod_m3: {type: DOUBLE, unit: m3, description: "Oil produced"}
+      gas_prod_e3m3: {type: DOUBLE, unit: e3m3, description: "Gas produced"}
+      water_prod_m3: {type: DOUBLE, unit: m3, description: "Water produced"}
+      gas_flared_e3m3: {type: DOUBLE, unit: e3m3, description: "Gas flared (burned)"}
+      gas_vented_e3m3: {type: DOUBLE, unit: e3m3, description: "Gas vented (released unburned)"}
+
+  fact_commodity_price_monthly:
+    description: "Monthly average commodity prices and FX (SYNTHETIC in this demo). Grain: production_month."
+    columns:
+      production_month: {type: DATE, description: "First day of the month. Join to production tables on this column"}
+      wti_usd_bbl: {type: DOUBLE, unit: USD/bbl, description: "WTI crude oil price"}
+      aeco_cad_gj: {type: DOUBLE, unit: CAD/GJ, description: "AECO natural gas price"}
+      usdcad: {type: DOUBLE, description: "CAD per 1 USD"}
+
+relationships:
+  - "dim_well.operator_id = dim_operator.operator_id"
+  - "dim_well.field_id = dim_field.field_id"
+  - "dim_well.facility_id = dim_facility.facility_id"
+  - "dim_facility.operator_id = dim_operator.operator_id"
+  - "dim_facility.field_id = dim_field.field_id"
+  - "fact_well_production_monthly.well_id = dim_well.well_id"
+  - "fact_facility_monthly.facility_id = dim_facility.facility_id"
+  - "fact_*_monthly.production_month = fact_commodity_price_monthly.production_month"
+
+metrics:
+  total_oil: "SUM(oil_m3) (oil, bitumen and condensate are all in oil_m3; filter dim_well.fluid if the user asks about one)"
+  gas_oil_ratio_GOR: "SUM(gas_e3m3) * 1000.0 / NULLIF(SUM(oil_m3), 0)   -- m3 gas per m3 oil"
+  water_cut: "SUM(water_m3) / NULLIF(SUM(oil_m3) + SUM(water_m3), 0)   -- 0..1"
+  flare_ratio: "SUM(gas_flared_e3m3) / NULLIF(SUM(gas_prod_e3m3), 0)"
+  active_wells: "COUNT(DISTINCT well_id) in fact_well_production_monthly for the month (wells that produced)"
+  cumulative_production: "SUM over all months for a well"
+
+rules:
+  - "Write exactly one SELECT statement in DuckDB dialect. No other statement types."
+  - "Use only the tables and columns listed here. Do not invent columns."
+  - "Always aggregate a fact table to the needed grain BEFORE joining it to another fact table."
+  - "When the user says 'operator' or 'company', return operator_name (join dim_operator), not only the id."
+  - "Round ratios and percentages to 2 decimals when returning them."
+  - "If the question cannot be answered from these tables, reply exactly: CANNOT_ANSWER: <short reason>"
+
+examples:
+  - question: "How many wells does each operator have? Show the top 3."
+    sql: |
+      SELECT o.operator_name, COUNT(*) AS wells
+      FROM dim_well w JOIN dim_operator o USING (operator_id)
+      GROUP BY o.operator_name ORDER BY wells DESC LIMIT 3
+  - question: "Total gas production by month in 2024"
+    sql: |
+      SELECT production_month, SUM(gas_e3m3) AS gas_e3m3
+      FROM fact_well_production_monthly
+      WHERE year(production_month) = 2024
+      GROUP BY production_month ORDER BY production_month
+  - question: "Water cut by field in the latest month"
+    sql: |
+      SELECT f.field_name,
+             ROUND(SUM(p.water_m3) / NULLIF(SUM(p.oil_m3) + SUM(p.water_m3), 0), 2) AS water_cut
+      FROM fact_well_production_monthly p
+      JOIN dim_well w USING (well_id) JOIN dim_field f USING (field_id)
+      WHERE p.production_month = (SELECT MAX(production_month) FROM fact_well_production_monthly)
+      GROUP BY f.field_name ORDER BY water_cut DESC
+  - question: "Which operators grew oil production the most in 2025 compared with 2024?"
+    sql: |
+      WITH y AS (
+        SELECT w.operator_id, year(p.production_month) AS yr, SUM(p.oil_m3) AS oil
+        FROM fact_well_production_monthly p JOIN dim_well w USING (well_id)
+        WHERE year(p.production_month) IN (2024, 2025)
+        GROUP BY 1, 2)
+      SELECT o.operator_name, a.oil - b.oil AS oil_change_m3
+      FROM y a JOIN y b ON a.operator_id = b.operator_id AND a.yr = 2025 AND b.yr = 2024
+      JOIN dim_operator o ON o.operator_id = a.operator_id
+      ORDER BY oil_change_m3 DESC LIMIT 5
+  - question: "Average WTI price in each quarter of 2025"
+    sql: |
+      SELECT date_trunc('quarter', production_month) AS quarter, ROUND(AVG(wti_usd_bbl), 2) AS avg_wti
+      FROM fact_commodity_price_monthly
+      WHERE year(production_month) = 2025
+      GROUP BY 1 ORDER BY 1

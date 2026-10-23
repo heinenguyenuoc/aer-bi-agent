@@ -1,0 +1,81 @@
+# Bộ câu hỏi đánh giá: mỗi câu có SQL "đáp án" (gold). Chạy: python eval/run_eval.py
+# Mở rộng dần lên 30-50 câu. Các câu khác với few-shot examples trong data_dictionary.yaml để tránh rò rỉ đáp án.
+- id: q01
+  question: "What was total oil production in the latest month?"
+  sql: "SELECT SUM(oil_m3) FROM fact_well_production_monthly WHERE production_month = (SELECT MAX(production_month) FROM fact_well_production_monthly)"
+- id: q02
+  question: "How many wells are currently in Producing status?"
+  sql: "SELECT COUNT(*) FROM dim_well WHERE status = 'Producing'"
+- id: q03
+  question: "Top 5 operators by total oil production in 2025"
+  sql: "SELECT o.operator_name, SUM(p.oil_m3) FROM fact_well_production_monthly p JOIN dim_well w USING (well_id) JOIN dim_operator o USING (operator_id) WHERE year(p.production_month) = 2025 GROUP BY o.operator_name ORDER BY 2 DESC LIMIT 5"
+- id: q04
+  question: "Number of wells by fluid type"
+  sql: "SELECT fluid, COUNT(*) FROM dim_well GROUP BY fluid"
+- id: q05
+  question: "Which field had the highest total gas production in 2025?"
+  sql: "SELECT f.field_name FROM fact_well_production_monthly p JOIN dim_well w USING (well_id) JOIN dim_field f USING (field_id) WHERE year(p.production_month) = 2025 GROUP BY f.field_name ORDER BY SUM(p.gas_e3m3) DESC LIMIT 1"
+- id: q06
+  question: "Monthly total oil production for 2025"
+  sql: "SELECT production_month, SUM(oil_m3) FROM fact_well_production_monthly WHERE year(production_month) = 2025 GROUP BY production_month ORDER BY production_month"
+- id: q07
+  question: "Total gas flared in 2025 by region"
+  sql: "SELECT fl.region, SUM(m.gas_flared_e3m3) FROM fact_facility_monthly m JOIN dim_facility f USING (facility_id) JOIN dim_field fl USING (field_id) WHERE year(m.production_month) = 2025 GROUP BY fl.region"
+- id: q08
+  question: "Which operators have more than 100 wells?"
+  sql: "SELECT o.operator_name FROM dim_well w JOIN dim_operator o USING (operator_id) GROUP BY o.operator_name HAVING COUNT(*) > 100"
+- id: q09
+  question: "Average monthly oil per well in 2025 for horizontal versus vertical wells"
+  sql: "SELECT w.is_horizontal, AVG(p.oil_m3) FROM fact_well_production_monthly p JOIN dim_well w USING (well_id) WHERE year(p.production_month) = 2025 GROUP BY w.is_horizontal"
+- id: q10
+  question: "Top 10 wells by cumulative oil production"
+  sql: "SELECT well_id, SUM(oil_m3) FROM fact_well_production_monthly GROUP BY well_id ORDER BY 2 DESC LIMIT 10"
+- id: q11
+  question: "Percent change in total oil production between the latest month and the same month a year earlier"
+  sql: "WITH m AS (SELECT production_month, SUM(oil_m3) AS oil FROM fact_well_production_monthly GROUP BY 1), l AS (SELECT MAX(production_month) AS mx FROM m) SELECT 100.0 * (cur.oil / prev.oil - 1) FROM m cur, m prev, l WHERE cur.production_month = l.mx AND prev.production_month = l.mx - INTERVAL 1 YEAR"
+- id: q12
+  question: "What was the average WTI price in 2025?"
+  sql: "SELECT AVG(wti_usd_bbl) FROM fact_commodity_price_monthly WHERE year(production_month) = 2025"
+- id: q13
+  question: "Correlation between monthly total oil production and the WTI price"
+  sql: "SELECT CORR(p.oil, c.wti_usd_bbl) FROM (SELECT production_month, SUM(oil_m3) AS oil FROM fact_well_production_monthly GROUP BY 1) p JOIN fact_commodity_price_monthly c USING (production_month)"
+- id: q14
+  question: "How many operators are headquartered in Edmonton?"
+  sql: "SELECT COUNT(*) FROM dim_operator WHERE hq_city = 'Edmonton'"
+- id: q15
+  question: "Number of facilities by facility type"
+  sql: "SELECT facility_type, COUNT(*) FROM dim_facility GROUP BY facility_type"
+- id: q16
+  question: "Top 5 facilities by gas flared in 2025"
+  sql: "SELECT f.facility_name, SUM(m.gas_flared_e3m3) FROM fact_facility_monthly m JOIN dim_facility f USING (facility_id) WHERE year(m.production_month) = 2025 GROUP BY f.facility_name ORDER BY 2 DESC LIMIT 5"
+- id: q17
+  question: "How many wells were spudded in 2024?"
+  sql: "SELECT COUNT(*) FROM dim_well WHERE year(spud_date) = 2024"
+- id: q18
+  question: "Overall water cut for Crude Bitumen wells in 2025"
+  sql: "SELECT SUM(p.water_m3) / (SUM(p.oil_m3) + SUM(p.water_m3)) FROM fact_well_production_monthly p JOIN dim_well w USING (well_id) WHERE w.fluid = 'Crude Bitumen' AND year(p.production_month) = 2025"
+- id: q19
+  question: "Which operator had the highest gas-oil ratio among Oil wells in 2025?"
+  sql: "SELECT o.operator_name FROM fact_well_production_monthly p JOIN dim_well w USING (well_id) JOIN dim_operator o USING (operator_id) WHERE w.fluid = 'Oil' AND year(p.production_month) = 2025 GROUP BY o.operator_name ORDER BY SUM(p.gas_e3m3) * 1000.0 / SUM(p.oil_m3) DESC LIMIT 1"
+- id: q20
+  question: "How many wells produced in each month of 2026?"
+  sql: "SELECT production_month, COUNT(DISTINCT well_id) FROM fact_well_production_monthly WHERE year(production_month) = 2026 GROUP BY production_month ORDER BY production_month"
+- id: q21
+  question: "Gas production by region in 2025, highest first"
+  sql: "SELECT f.region, SUM(p.gas_e3m3) FROM fact_well_production_monthly p JOIN dim_well w USING (well_id) JOIN dim_field f USING (field_id) WHERE year(p.production_month) = 2025 GROUP BY f.region ORDER BY 2 DESC"
+- id: q22
+  question: "Total oil production by quarter in 2025"
+  sql: "SELECT date_trunc('quarter', production_month), SUM(oil_m3) FROM fact_well_production_monthly WHERE year(production_month) = 2025 GROUP BY 1 ORDER BY 1"
+- id: q23
+  question: "Which 5 operators had the biggest drop in oil production from 2024 to 2025?"
+  sql: "WITH y AS (SELECT w.operator_id, year(p.production_month) AS yr, SUM(p.oil_m3) AS oil FROM fact_well_production_monthly p JOIN dim_well w USING (well_id) WHERE year(p.production_month) IN (2024, 2025) GROUP BY 1, 2) SELECT o.operator_name FROM y a JOIN y b ON a.operator_id = b.operator_id AND a.yr = 2025 AND b.yr = 2024 JOIN dim_operator o ON o.operator_id = a.operator_id ORDER BY a.oil - b.oil ASC LIMIT 5"
+- id: q24
+  question: "Average hours on production per well-month for horizontal wells in 2026"
+  sql: "SELECT AVG(p.hours_on) FROM fact_well_production_monthly p JOIN dim_well w USING (well_id) WHERE w.is_horizontal AND year(p.production_month) = 2026"
+- id: q25
+  question: "How many wells have never reported any production?"
+  sql: "SELECT COUNT(*) FROM dim_well w WHERE NOT EXISTS (SELECT 1 FROM fact_well_production_monthly p WHERE p.well_id = w.well_id)"
+- id: q26
+  question: "What is the weather in Calgary today?"
+  expect_refusal: true
+  sql: "SELECT 1"
