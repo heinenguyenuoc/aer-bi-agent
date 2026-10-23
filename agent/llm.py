@@ -91,7 +91,8 @@ def chat(messages: list[dict], provider: str, model: str | None = None, temperat
     # (HTTP 503/429), unavailable (404) or too slow.
     fallbacks = [m.strip() for m in os.getenv("LLM_FALLBACK_MODELS", "").split(",") if m.strip()]
     out, last_err = None, None
-    for m in [model] + [f for f in fallbacks if f != model]:
+    tried = [model] + [f for f in fallbacks if f != model]
+    for m in tried:
         body = {"model": m, "messages": messages, "temperature": temperature}
         effort = os.getenv("LLM_REASONING_EFFORT")   # optional, e.g. "low": less "thinking" = faster on reasoning models
         if effort:
@@ -104,7 +105,7 @@ def chat(messages: list[dict], provider: str, model: str | None = None, temperat
             if not any(t in str(e) for t in ("HTTP 503", "HTTP 429", "HTTP 404", "did not answer")):
                 raise
     if out is None:
-        raise last_err
+        raise LLMError(f"{last_err} [models tried: {', '.join(tried)}]")
     try:
         text = out["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError):
