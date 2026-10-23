@@ -1,4 +1,4 @@
-"""Schema drift: so data dictionary (YAML) với schema thật của DuckDB và báo chênh lệch."""
+"""Schema drift: compare the data dictionary (YAML) with the real DuckDB schema and report differences."""
 import yaml
 
 from agent.db import connect

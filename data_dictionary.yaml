@@ -1,5 +1,5 @@
-# Data dictionary = "semantic layer" của agent. Chất lượng text-to-SQL phụ thuộc chủ yếu vào file này.
-# Agent đọc file này để dựng prompt; drift checker so file này với schema DuckDB thật.
+# Data dictionary = the agent's "semantic layer". Text-to-SQL quality depends mostly on this file.
+# The agent reads it to build the prompt; the drift checker compares it with the real DuckDB schema.
 
 database: DuckDB (SQL dialect duckdb)
 units:

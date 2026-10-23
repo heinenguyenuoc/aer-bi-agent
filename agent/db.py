@@ -1,4 +1,4 @@
-"""Kết nối DuckDB read-only, tắt truy cập file ngoài, có timeout."""
+"""Read-only DuckDB connection with external file access disabled and a query timeout."""
 import threading
 
 import duckdb

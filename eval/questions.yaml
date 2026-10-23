@@ -1,5 +1,5 @@
-# Bộ câu hỏi đánh giá: mỗi câu có SQL "đáp án" (gold). Chạy: python eval/run_eval.py
-# Mở rộng dần lên 30-50 câu. Các câu khác với few-shot examples trong data_dictionary.yaml để tránh rò rỉ đáp án.
+# Evaluation questions: each has a reference ("gold") SQL. Run: python eval/run_eval.py
+# Grow this to 30-50 questions. Keep them different from the few-shot examples in data_dictionary.yaml to avoid leaking answers.
 - id: q01
   question: "What was total oil production in the latest month?"
   sql: "SELECT SUM(oil_m3) FROM fact_well_production_monthly WHERE production_month = (SELECT MAX(production_month) FROM fact_well_production_monthly)"

@@ -1,10 +1,10 @@
-"""Client LLM mỏng, chỉ dùng thư viện chuẩn (urllib).
+"""Thin LLM client using only the standard library (urllib).
 
-Gemini, Groq, OpenRouter và Ollama đều có endpoint tương thích OpenAI nên dùng chung một hàm.
-Anthropic dùng Messages API riêng. Provider 'mock' để thử giao diện offline.
+Gemini, Groq, OpenRouter and Ollama expose OpenAI-compatible endpoints, so one function serves them all.
+Anthropic uses its own Messages API. The 'mock' provider lets you try the UI offline.
 
-LƯU Ý: tên model mặc định bên dưới có thể đã đổi, gói free cũng đổi hạn mức thường xuyên.
-Kiểm tra trang model/giá của nhà cung cấp rồi đặt lại bằng LLM_MODEL hoặc config.yaml.
+NOTE: the default model names below may be out of date, and free-tier quotas change often.
+Check the provider's model/pricing page and override with LLM_MODEL or config.yaml.
 """
 import json
 import os
@@ -45,7 +45,7 @@ def _post(url: str, headers: dict, body: dict, timeout: int, retries: int = 3) -
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
             detail = e.read().decode(errors="replace")[:500]
-            if e.code in (429, 500, 502, 503, 529) and attempt < retries:   # free tier hay bị 429
+            if e.code in (429, 500, 502, 503, 529) and attempt < retries:   # free tiers often return 429
                 wait = float(e.headers.get("Retry-After") or 2 ** (attempt + 1))
                 time.sleep(min(wait, 30))
                 continue
@@ -57,7 +57,7 @@ def _post(url: str, headers: dict, body: dict, timeout: int, retries: int = 3) -
 
 def chat(messages: list[dict], provider: str, model: str | None = None, temperature: float = 0.0,
          timeout: int = 120) -> dict:
-    """messages: [{'role': 'system'|'user'|'assistant', 'content': str}]. Trả về {text, prompt_tokens, completion_tokens}."""
+    """messages: [{'role': 'system'|'user'|'assistant', 'content': str}]. Returns {text, prompt_tokens, completion_tokens}."""
     if provider not in PROVIDERS:
         raise LLMError(f"Unknown provider '{provider}'. Options: {', '.join(PROVIDERS)}")
     cfg = PROVIDERS[provider]

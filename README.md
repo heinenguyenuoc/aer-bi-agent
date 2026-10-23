@@ -1,89 +1,111 @@
-# Alberta Energy BI Agent (text-to-SQL, chạy miễn phí)
+# Alberta Energy BI Agent (free-stack text-to-SQL)
 
-Bản làm lại của "AI-powered BI agent" bằng stack miễn phí, trên dữ liệu upstream oil & gas của Alberta.
-Hỏi bằng ngôn ngữ tự nhiên → agent sinh SQL → kiểm tra an toàn → chạy trên DuckDB → trả bảng, biểu đồ, SQL.
+A natural-language BI agent for Alberta upstream oil and gas data, built entirely on free tools.
+Ask a question in plain English → the agent writes SQL → the SQL is checked for safety → it runs on DuckDB → you get a table, a chart and the SQL.
 
 ```
-Câu hỏi ──► prompt = data dictionary (YAML) + few-shot ──► LLM ──► SQL
-                                                                    │
-        ┌── lỗi: đưa lại cho LLM sửa (tối đa 2 lần) ◄── chạy trên DuckDB (read-only, timeout) ◄── SQL guard (sqlglot)
-        ▼
-  Streamlit: bảng + biểu đồ + SQL + 👍/👎         SQLite log ──► Admin console (log, token, drift, eval)
+Question ──► prompt = data dictionary (YAML) + few-shot ──► LLM ──► SQL
+                                                                     │
+   ┌── on error: feed it back to the LLM to fix (max 2 times) ◄── run on DuckDB (read-only, timeout) ◄── SQL guard (sqlglot)
+   ▼
+ Streamlit: table + chart + SQL + thumbs up/down         SQLite log ──► Admin console (log, tokens, drift, eval)
 ```
 
-| Thành phần | Công nghệ | Tương ứng bản cũ ở Live Payments |
+| Component | Technology used here | Typical enterprise equivalent |
 |---|---|---|
-| Kho dữ liệu | DuckDB (1 file) | Redshift |
-| LLM | Gemini / Groq / OpenRouter free tier, hoặc Ollama local, hoặc Claude | Bedrock + Claude |
-| Data dictionary | `data_dictionary.yaml` | Data dictionary trên S3 |
-| Semantic layer + drift | `agent/drift.py` | Semantic layer tự cập nhật |
-| UI + Admin | Streamlit | Amplify + Admin Console |
+| Data warehouse | DuckDB (single file) | Amazon Redshift |
+| LLM | Gemini / Groq / OpenRouter free tier, local Ollama, or Claude | Bedrock + Claude |
+| Data dictionary | `data_dictionary.yaml` | Dictionary stored in S3 |
+| Semantic layer + drift check | `agent/drift.py` | Auto-updating semantic layer |
+| UI + Admin | Streamlit | Amplify + admin console |
 
-## Chạy thử (5 phút)
+## Quick start (5 minutes)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/generate_fake_data.py        # sinh data giả -> data/aer.duckdb
-export GEMINI_API_KEY=...                   # hoặc GROQ_API_KEY, xem bên dưới
+python scripts/generate_fake_data.py        # generates synthetic data -> data/aer.duckdb
+export GEMINI_API_KEY=...                   # or GROQ_API_KEY, see below
 streamlit run app.py
 ```
 
-Chưa có API key? Chọn provider `mock` trong sidebar để xem giao diện (mock chỉ trả một câu SQL cố định).
+No API key yet? Pick the `mock` provider (admin sidebar) to see the UI; it only returns one fixed SQL query.
 
-### Chọn LLM miễn phí
-- **Gemini**: lấy key ở Google AI Studio → `GEMINI_API_KEY`.
-- **Groq**: lấy key ở console.groq.com → `GROQ_API_KEY`, `LLM_PROVIDER=groq`.
-- **Ollama (local, không giới hạn)**: cài Ollama, `ollama pull qwen2.5-coder:7b`, `LLM_PROVIDER=ollama`. Model 7B chạy được trên laptop 16GB nhưng text-to-SQL kém hơn model cloud.
-- **Claude**: `ANTHROPIC_API_KEY`, `LLM_PROVIDER=anthropic` (tính phí theo token, demo nhỏ thì rẻ).
+### Choosing a free LLM
+- **Gemini**: get a key in Google AI Studio and set `GEMINI_API_KEY`.
+- **Groq**: get a key at console.groq.com, set `GROQ_API_KEY` and `LLM_PROVIDER=groq`.
+- **Ollama (local, unlimited)**: install Ollama, run `ollama pull qwen2.5-coder:7b`, set `LLM_PROVIDER=ollama`. A 7B model runs on a 16 GB laptop but is weaker at text-to-SQL than cloud models.
+- **Claude**: set `ANTHROPIC_API_KEY` and `LLM_PROVIDER=anthropic` (billed per token; cheap for a small demo).
 
-Tên model mặc định trong `agent/llm.py` và hạn mức gói free đều đổi thường xuyên: kiểm tra trang của nhà cung cấp, đặt lại bằng `LLM_MODEL` hoặc ô Model trong sidebar.
+The default model names in `agent/llm.py` and free-tier quotas change often. Check the provider's pages and override with `LLM_MODEL` or the Model box in the admin sidebar.
 
-## An toàn (hai lớp)
-1. `agent/guard.py` (sqlglot): đúng 1 câu SELECT/CTE, chỉ bảng trong dictionary, chặn table function và hàm đọc file (`read_csv`...), tự thêm `LIMIT`.
-2. `agent/db.py`: DuckDB mở `read_only=True` và `enable_external_access=False`, có timeout. Đã thử: kể cả bypass guard, DB vẫn từ chối `CREATE`, `COPY`, `read_csv`.
+## Safety (two layers)
+1. `agent/guard.py` (sqlglot): exactly one SELECT/CTE statement, only tables listed in the dictionary, table functions and file-reading functions (`read_csv`, ...) blocked, `LIMIT` added automatically.
+2. `agent/db.py`: DuckDB opened with `read_only=True` and `enable_external_access=False`, plus a timeout. Tested: even if the guard is bypassed, the database still refuses `CREATE`, `COPY` and `read_csv`.
 
-## Đánh giá (con số cho CV)
+## Evaluation
 ```bash
 python eval/run_eval.py --provider groq --model llama-3.3-70b-versatile
 python eval/run_eval.py --provider gemini
-python eval/run_eval.py --gold-only      # kiểm tra SQL đáp án, không gọi LLM
+python eval/run_eval.py --gold-only      # check the reference SQL only, no LLM calls
 ```
-26 câu (25 SQL + 1 câu ngoài phạm vi phải từ chối), đo execution accuracy: kết quả của agent khớp kết quả SQL đáp án (bỏ qua tên cột, thứ tự dòng; làm tròn 2 chữ số; cho phép cột thừa). Kết quả lưu ở `eval/results/` và hiện ở tab Eval của Admin. Mở rộng lên 30–50 câu bằng cách thêm vào `eval/questions.yaml`. Hãy báo accuracy theo từng model và theo nhóm độ khó (join nhiều bảng, so sánh theo thời gian) thay vì một con số duy nhất.
+26 questions (25 with reference SQL plus 1 out-of-scope question the agent must refuse). The metric is execution accuracy: the agent's result must match the reference SQL's result (column names and row order ignored, floats rounded to 2 decimals, extra columns allowed). Results are saved in `eval/results/` and shown in the Admin "Eval results" tab. Extend the set to 30–50 questions in `eval/questions.yaml`, and report accuracy per model and per difficulty group (multi-table joins, time comparisons) rather than a single number.
 
-## Dữ liệu: giả và thật
+## Data: synthetic vs real
 
-**Bản demo dùng dữ liệu giả** (`scripts/generate_fake_data.py`): operator hư cấu, sản lượng mô phỏng bằng đường suy giảm Arps, giá WTI/AECO giả. Cấu trúc và đơn vị (m³ dầu/nước, e³m³ khí) theo quy ước Petrinex/AER, nên đổi sang dữ liệu thật chỉ cần thay bước nạp.
+**The demo uses synthetic data** (`scripts/generate_fake_data.py`): fictional operators, production simulated with Arps decline curves, made-up WTI/AECO prices. Structure and units (m³ for oil/water, e³m³ for gas) follow the Petrinex/AER convention, so moving to real data only requires replacing the loading step.
 
-**Nguồn thật (public)** theo catalogue của AER, kiểm tra lại định dạng và điều khoản trước khi dùng:
-- Petrinex Alberta Public Data: Well Infrastructure, Well Licence, Facility Infrastructure, Well-to-Facility Link, Business Associate, Field/Pool codes (cập nhật hằng tháng), và Conventional Volumetric Data (volume theo **facility**, gồm năm hiện tại cộng 4 năm trước, loại trừ oil sands).
-- AER ST37 (danh sách giếng), ST102 (facility), ST103 (field/pool), ST104 (BA code), ST60 (batteries: dầu, khí, nước, flaring, venting theo tháng).
+**Real public sources** (per the AER products catalogue; verify formats and terms before use):
+- Petrinex Alberta Public Data: Well Infrastructure, Well Licence, Facility Infrastructure, Well-to-Facility Link, Business Associate, Field/Pool codes (updated monthly), and Conventional Volumetric Data (volumes by **facility**, current year plus the previous four years, oil sands excluded).
+- AER ST37 (list of wells), ST102 (facility list), ST103 (field/pool codes), ST104 (BA codes), ST60 (batteries: monthly oil, gas, water, flaring and venting).
 
-**Hạn chế quan trọng:** sản lượng theo **từng giếng** theo tháng (Well Production Data File – All Alberta) là sản phẩm trả phí của AER (catalogue niêm yết $750 cho mỗi file đơn lẻ), không phải dữ liệu mở. Vì vậy với dữ liệu thật, bảng đáng dùng là `fact_facility_monthly` (khớp cột ST60/Petrinex) cùng các bảng dim. `fact_well_production_monthly` chỉ có trong bản giả; khi chuyển sang dữ liệu thật hãy bỏ bảng này khỏi `data_dictionary.yaml` và sửa các câu eval liên quan.
+**Important limitation:** monthly production **per well** (Well Production Data File – All Alberta) is a paid AER product (the catalogue lists $750 per single file), not open data. With real data, the useful table is therefore `fact_facility_monthly` (matches the ST60/Petrinex columns) plus the dimension tables. `fact_well_production_monthly` exists only in the synthetic data; when switching to real data, remove it from `data_dictionary.yaml` and adjust the related eval questions.
 
-Các bước chuyển sang dữ liệu thật:
-1. Tải CSV từ Petrinex/AER, nạp vào DuckDB (`CREATE TABLE ... AS SELECT * FROM read_csv(...)`) với tên bảng/cột như trong dictionary (hoặc sửa dictionary cho khớp).
-2. Chạy tab **Schema drift** trong Admin để thấy ngay cột nào lệch giữa dictionary và DB.
-3. Chạy lại eval; sửa `eval/questions.yaml` cho phù hợp dữ liệu thật.
+Steps to switch to real data:
+1. Download CSVs from Petrinex/AER and load them into DuckDB (`CREATE TABLE ... AS SELECT * FROM read_csv(...)`) using the table and column names in the dictionary (or edit the dictionary to match).
+2. Run the **Schema drift** tab in the Admin console to see which columns differ between the dictionary and the database.
+3. Re-run the eval and update `eval/questions.yaml` for the real data.
 
-AER ghi rõ người dùng được dùng file để xử lý nội bộ hoặc cho khách hàng, nhưng không được sao chép nguyên file hoặc phần lớn file để bán lại. Đừng commit file dữ liệu thật lên repo public (`.gitignore` đã loại `data/*.duckdb`).
+AER states that its files may be used for internal processing or for clients, but copying a whole file or a large part of it for resale is not permitted. Do not commit real data files to a public repository (`.gitignore` already excludes `data/*.duckdb`).
 
-## Cấu trúc
+## Deploy (run without your laptop)
+
+Recommended: **Streamlit Community Cloud** (free). According to Streamlit's documentation, an app with no traffic for 12 hours goes to sleep; a visitor sees a "gone to sleep" page and clicks "Yes, get this app back up!" to wake it (anyone who can view the app can do this). That page is shown by the platform and `app.py` cannot change it. Put `landing.html` (a static landing page that explains this) on GitHub Pages or your portfolio and use that link in your CV.
+
+1. Push the repo to GitHub. You do not need to commit `data/aer.duckdb`: the app generates the synthetic data when the database is missing.
+2. On share.streamlit.io choose New app, then the repo, branch and file `app.py`.
+3. Open the app's Secrets and paste (see `.streamlit/secrets.toml.example`):
+   ```toml
+   GEMINI_API_KEY = "..."
+   ADMIN_PASSWORD = "your-password"
+   ```
+4. Edit two places in `landing.html`: `REPLACE_WITH_YOUR_STREAMLIT_URL` and `REPLACE_WITH_YOUR_GITHUB_REPO_URL`.
+
+Protecting the public demo:
+- Guests **cannot change the provider or model** (so they cannot spend your key on expensive models). Only an admin who enters `ADMIN_PASSWORD` sees the selector.
+- The Admin page stays locked if `ADMIN_PASSWORD` is not set.
+- `max_questions_per_session` (15) and `max_queries_per_day` (200) in `config.yaml`. The per-session limit can be bypassed by reloading the page; the daily limit is the real cap, but the SQLite log on Streamlit Cloud is lost when the app restarts, so the counter resets too.
+- Use a dedicated API key for the demo only.
+
+If you need it running continuously (for example a monthly data-refresh cron), use an always-on VM such as Oracle Cloud Always Free.
+
+## Project layout
 ```
-app.py                    Streamlit: trang Ask + Admin
-config.yaml               đường dẫn, giới hạn, provider mặc định
-data_dictionary.yaml      semantic layer: bảng, cột, đơn vị, metric, luật, few-shot
-agent/pipeline.py         prompt, vòng sinh/sửa SQL, log
-agent/guard.py            kiểm tra SQL (sqlglot)
-agent/db.py               DuckDB read-only + timeout
-agent/llm.py              client LLM (urllib, không cần SDK)
-agent/logger.py           log SQLite, feedback
-agent/drift.py            so dictionary với schema thật
+app.py                    Streamlit: Ask page + Admin (locked by ADMIN_PASSWORD)
+landing.html              static landing page for GitHub Pages / portfolio
+config.yaml               paths, limits, default provider
+data_dictionary.yaml      semantic layer: tables, columns, units, metrics, rules, few-shot examples
+agent/pipeline.py         prompt, generate/repair SQL loop, logging
+agent/guard.py            SQL validation (sqlglot)
+agent/db.py               read-only DuckDB + timeout
+agent/llm.py              LLM client (urllib, no SDK needed)
+agent/logger.py           SQLite log, feedback
+agent/drift.py            compares the dictionary with the real schema
 scripts/generate_fake_data.py
 eval/questions.yaml, eval/run_eval.py
 ```
 
-## Ý tưởng làm tiếp
-- Tab "Pending SQL review": admin duyệt SQL đúng rồi tự thêm vào few-shot (vòng học từ feedback 👍).
-- Chọn bảng liên quan bằng embedding khi schema lớn (hiện cả dictionary vừa trong ~2k token nên chưa cần).
-- Deploy lên Streamlit Community Cloud hoặc Hugging Face Spaces (đặt API key trong secrets).
+## Ideas for next steps
+- A "Pending SQL review" tab: the admin approves correct SQL, which is then added to the few-shot examples (learning loop from thumbs-up feedback).
+- Select relevant tables with embeddings when the schema grows (the whole dictionary currently fits in about 2k tokens, so it is not needed yet).
+- Deploy to Streamlit Community Cloud or Hugging Face Spaces (API keys in secrets).

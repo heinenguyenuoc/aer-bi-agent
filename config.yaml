@@ -1,13 +1,17 @@
-# Cấu hình chung. Có thể override bằng biến môi trường LLM_PROVIDER / LLM_MODEL.
+# General settings. Can be overridden with the LLM_PROVIDER / LLM_MODEL environment variables.
 db_path: data/aer.duckdb
 dictionary_path: data_dictionary.yaml
 log_path: logs/agent_log.sqlite
 
-max_rows: 1000            # tự thêm LIMIT nếu SQL không có
-query_timeout_s: 30       # ngắt query chạy quá lâu
-max_repair_attempts: 2    # số lần đưa lỗi lại cho LLM để sửa SQL
+max_rows: 1000            # add a LIMIT if the SQL has none
+query_timeout_s: 30       # cancel queries that run too long
+max_repair_attempts: 2    # how many times to feed an error back to the LLM to fix the SQL
 
 llm:
   provider: gemini        # gemini | groq | openrouter | ollama | anthropic | mock
-  model: ""               # để trống = dùng model mặc định của provider (xem agent/llm.py)
+  model: ""               # empty = use the provider's default model (see agent/llm.py)
   temperature: 0.0
+
+# Limits for the public demo (admin is not limited). Protects your free API quota.
+max_questions_per_session: 15
+max_queries_per_day: 200

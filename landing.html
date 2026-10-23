@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alberta Energy BI Agent</title>
+<meta name="description" content="Ask questions about Alberta oil and gas data in plain English. A text-to-SQL agent built with DuckDB, Streamlit and an LLM.">
+<style>
+  :root { --bg:#fafaf7; --fg:#1d2320; --muted:#5b6560; --card:#fff; --line:#e3e6e1; --accent:#0f6b5c; --accent-fg:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#121513; --fg:#e8ece9; --muted:#9aa5a0; --card:#1a1e1c; --line:#2a312d; --accent:#3fb59f; --accent-fg:#06201a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 56px 16px 72px; }
+  h1 { font-size: clamp(28px, 6vw, 40px); line-height: 1.15; margin: 0 0 12px; }
+  .lead { font-size: 18px; color: var(--muted); margin: 0 0 28px; }
+  .cta { display:inline-block; background:var(--accent); color:var(--accent-fg); text-decoration:none; font-weight:600;
+         padding: 12px 22px; border-radius: 8px; }
+  .cta:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .ghost { margin-left: 14px; color: var(--accent); font-weight: 600; }
+  .note { margin: 18px 0 0; padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+          color: var(--muted); font-size: 15px; }
+  h2 { font-size: 20px; margin: 40px 0 12px; }
+  .q { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 8px 0;
+       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+  ul { padding-left: 20px; margin: 0; } li { margin: 6px 0; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  .box b { display:block; margin-bottom: 4px; }
+  footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Alberta Energy BI Agent</h1>
+  <p class="lead">Ask questions about Alberta oil and gas data in plain English. The agent writes the SQL, checks it for safety, runs it, and shows you the table, chart and query.</p>
+
+  <p>
+    <a class="cta" href="REPLACE_WITH_YOUR_STREAMLIT_URL">Open the live demo</a>
+    <a class="ghost" href="REPLACE_WITH_YOUR_GITHUB_REPO_URL">Source code</a>
+  </p>
+  <p class="note">The demo is hosted on a free tier and goes to sleep when nobody has used it for a while. If you see a
+  "this app has gone to sleep" page, click <b>Yes, get this app back up!</b> and wait for it to start.
+  The demo runs on <b>synthetic data</b> (fictional operators, simulated volumes) shaped like Alberta Energy Regulator and Petrinex reporting.</p>
+
+  <h2>Try questions like</h2>
+  <div class="q">Top 5 operators by oil production in 2025</div>
+  <div class="q">Which fields have the highest water cut in the latest month?</div>
+  <div class="q">How did total gas flared change in 2025 compared with 2024?</div>
+  <div class="q">Correlation between monthly oil production and WTI price</div>
+
+  <h2>How it works</h2>
+  <div class="grid">
+    <div class="box"><b>Data dictionary</b>A YAML semantic layer defines tables, units (m³, e³m³), metrics such as GOR and water cut, and example queries.</div>
+    <div class="box"><b>Two-layer safety</b>SQL is parsed and restricted to a single SELECT on known tables. The database is read-only with file access disabled.</div>
+    <div class="box"><b>Self-repair</b>If a query fails, the error goes back to the model for up to two fixes.</div>
+    <div class="box"><b>Admin console</b>Query log, token usage, thumbs up/down feedback, schema drift check and benchmark results.</div>
+  </div>
+
+  <h2>Built with</h2>
+  <ul>
+    <li>DuckDB, sqlglot, Streamlit, Python</li>
+    <li>LLM access through free-tier APIs or a local model (Gemini, Groq, Ollama), with Claude as an option</li>
+    <li>A 26-question benchmark that scores execution accuracy against reference SQL, reported per model in the repo</li>
+  </ul>
+
+  <footer>Built by Heine (Uy) Nguyen, MDSA student at the University of Calgary.</footer>
+</main>
+</body>
+</html>

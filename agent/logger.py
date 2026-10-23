@@ -1,4 +1,4 @@
-"""Log mọi câu hỏi vào SQLite: SQL sinh ra, trạng thái, độ trễ, token, feedback đúng/sai (cho Admin console)."""
+"""Log every question to SQLite: generated SQL, status, latency, tokens, thumbs up/down feedback (for the Admin console)."""
 import sqlite3
 import pathlib
 from datetime import datetime, timezone
@@ -35,9 +35,15 @@ class QueryLog:
             return cur.lastrowid
 
     def set_feedback(self, log_id: int, value: int) -> None:
-        """value: 1 = đúng, -1 = sai."""
+        """value: 1 = correct, -1 = incorrect."""
         with self._conn() as c:
             c.execute("UPDATE queries SET feedback=? WHERE id=?", (value, log_id))
+
+    def count_today(self) -> int:
+        """Number of questions logged during the current UTC day (used for the public demo's daily limit)."""
+        today = datetime.now(timezone.utc).date().isoformat()
+        with self._conn() as c:
+            return c.execute("SELECT COUNT(*) FROM queries WHERE ts >= ?", (today,)).fetchone()[0]
 
     def recent(self, n: int = 100) -> pd.DataFrame:
         with self._conn() as c:

@@ -1,12 +1,12 @@
-"""Sinh dữ liệu GIẢ (synthetic) mô phỏng cấu trúc dữ liệu upstream oil & gas của Alberta.
+"""Generate SYNTHETIC data that mimics the structure of Alberta upstream oil & gas data.
 
-Mục đích: chạy được toàn bộ agent ngay, không cần tải dữ liệu thật.
-Tên operator là hư cấu. Số liệu sản lượng là mô phỏng (đường suy giảm Arps), KHÔNG phải số thật của AER/Petrinex.
+Purpose: run the whole agent right away, without downloading real data.
+Operator names are fictional. Production volumes are simulated (Arps decline curves) and are NOT real AER/Petrinex numbers.
 
-Đơn vị theo quy ước Petrinex/AER:
-  dầu & nước: m3 / tháng, khí: e3m3 (= 1000 m3) / tháng.
+Units follow the Petrinex/AER convention:
+  oil and water: m3 / month, gas: e3m3 (= 1000 m3) / month.
 
-Chạy:  python scripts/generate_fake_data.py            (ra data/aer.duckdb)
+Run:  python scripts/generate_fake_data.py            (writes data/aer.duckdb)
 """
 import argparse
 import pathlib
@@ -57,7 +57,7 @@ def main(out: str, seed: int, n_wells: int, n_ops: int) -> None:
     horiz = np.where(fluid == "Crude Bitumen", True, rng.random(n_wells) < 0.55)
     op_id = rng.choice(ops.operator_id.values, n_wells, p=op_w)
     field_id = rng.choice(fields.field_id.values, n_wells)
-    # Crude Bitumen chủ yếu ở Cold Lake
+    # Crude Bitumen is mostly in Cold Lake
     cold = int(fields.loc[fields.field_name == "Cold Lake", "field_id"].iloc[0])
     field_id = np.where((fluid == "Crude Bitumen") & (rng.random(n_wells) < 0.85), cold, field_id)
     spud = pd.to_datetime("2005-01-01") + pd.to_timedelta(rng.integers(0, 365 * 21 + 60, n_wells), unit="D")
@@ -79,7 +79,7 @@ def main(out: str, seed: int, n_wells: int, n_ops: int) -> None:
         "total_depth_m": np.where(horiz, rng.integers(2400, 5200, n_wells), rng.integers(600, 2600, n_wells)),
     })
 
-    # ---- facilities: gom giếng theo (operator, field, loại) thành các battery tối đa 12 giếng
+    # ---- facilities: group wells by (operator, field, type) into batteries of at most 12 wells
     wells["_kind"] = np.where(wells.fluid == "Gas", "Gas Battery", "Oil Battery")
     fac_rows, fac_of = [], {}
     n = 0
@@ -97,7 +97,7 @@ def main(out: str, seed: int, n_wells: int, n_ops: int) -> None:
     wells["facility_id"] = wells.well_id.map(fac_of)
     wells = wells.drop(columns="_kind")
 
-    # ---- giá hàng hóa (giả lập, mean-reverting)
+    # ---- commodity prices (simulated, mean-reverting)
     def ar1(mu, sd, phi, lo, hi, x0):
         x = np.empty(T); x[0] = x0
         for t in range(1, T):
@@ -109,9 +109,9 @@ def main(out: str, seed: int, n_wells: int, n_ops: int) -> None:
                           "usdcad": ar1(1.36, 0.01, 0.95, 1.25, 1.45, 1.35).round(4)})
     wti_z = ((price.wti_usd_bbl - price.wti_usd_bbl.mean()) / price.wti_usd_bbl.std()).values
 
-    # ---- sản lượng giếng theo tháng (Arps hyperbolic + nhiễu)
-    first_idx = ((spud.year - 2021) * 12 + (spud.month - 1)).values + 2   # 2 tháng sau spud mới có sản lượng
-    cut = np.full(n_wells, T)                                              # tháng dừng sản xuất
+    # ---- monthly well production (Arps hyperbolic + noise)
+    first_idx = ((spud.year - 2021) * 12 + (spud.month - 1)).values + 2   # production starts 2 months after spud
+    cut = np.full(n_wells, T)                                              # month production stops
     dead = status != "Producing"
     cut[dead] = np.clip(first_idx[dead] + rng.integers(24, 150, dead.sum()), 0, T)
     qi = np.where(fluid == "Oil", np.where(horiz, rng.uniform(1500, 6000, n_wells), rng.uniform(200, 1200, n_wells)),
@@ -119,8 +119,8 @@ def main(out: str, seed: int, n_wells: int, n_ops: int) -> None:
                   rng.uniform(8000, 25000, n_wells)))
     di = np.where(fluid == "Crude Bitumen", rng.uniform(0.005, 0.02, n_wells), rng.uniform(0.04, 0.14, n_wells))
     b = rng.uniform(0.6, 1.4, n_wells)
-    gor = rng.uniform(50, 300, n_wells)          # m3 khí / m3 dầu (giếng dầu)
-    cgr = rng.uniform(0.01, 0.05, n_wells)       # m3 condensate / e3m3 khí (giếng khí)
+    gor = rng.uniform(50, 300, n_wells)          # m3 gas / m3 oil (oil wells)
+    cgr = rng.uniform(0.01, 0.05, n_wells)       # m3 condensate / e3m3 gas (gas wells)
     wc0 = rng.uniform(0.05, 0.4, n_wells)
     wck = rng.uniform(0.002, 0.012, n_wells)
 
@@ -143,7 +143,7 @@ def main(out: str, seed: int, n_wells: int, n_ops: int) -> None:
                          "oil_m3": oil[wi, mi].round(1), "gas_e3m3": gas[wi, mi].round(1),
                          "water_m3": water[wi, mi].round(1), "hours_on": hours[wi, mi].astype(int)})
 
-    # ---- facility monthly (tổng từ giếng + flaring/venting), cột giống ST60
+    # ---- facility monthly (sum of wells + flaring/venting), columns like ST60
     fp = prod.merge(wells[["well_id", "facility_id"]], on="well_id")
     fm = fp.groupby(["facility_id", "production_month"], as_index=False).agg(
         oil_prod_m3=("oil_m3", "sum"), gas_prod_e3m3=("gas_e3m3", "sum"), water_prod_m3=("water_m3", "sum"))

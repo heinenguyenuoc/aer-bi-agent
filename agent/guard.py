@@ -1,6 +1,6 @@
-"""SQL guard: chỉ cho phép đúng 1 câu SELECT, chỉ trên các bảng trong data dictionary, tự thêm LIMIT.
+"""SQL guard: allow exactly one SELECT statement, only on tables in the data dictionary, and add a LIMIT.
 
-Đây là lớp bảo vệ thứ 2. Lớp thứ 1 là DB mở read-only và tắt truy cập file ngoài (xem agent/db.py).
+This is the second layer of protection. The first is the read-only DB with external file access disabled (see agent/db.py).
 """
 import sqlglot
 from sqlglot import exp
@@ -23,7 +23,7 @@ QUERY_TYPES = tuple(t for t in (getattr(exp, "Select", None), getattr(exp, "SetO
 
 
 def validate(sql: str, allowed_tables: set[str], max_rows: int = 1000) -> str:
-    """Trả về SQL đã chuẩn hóa (có LIMIT), hoặc raise GuardError với thông báo để đưa lại cho LLM sửa."""
+    """Return the normalized SQL (with LIMIT), or raise GuardError with a message that is fed back to the LLM to fix it."""
     sql = (sql or "").strip().rstrip(";").strip()
     if not sql:
         raise GuardError("Empty SQL.")

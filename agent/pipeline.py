@@ -1,4 +1,4 @@
-"""Pipeline: câu hỏi -> prompt (data dictionary + few-shot) -> LLM sinh SQL -> guard -> chạy -> tự sửa nếu lỗi -> log."""
+"""Pipeline: question -> prompt (data dictionary + few-shot) -> LLM writes SQL -> guard -> run -> self-repair on error -> log."""
 import os
 import re
 import time
@@ -32,7 +32,7 @@ class Result:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     log_id: int | None = None
-    history: list = field(default_factory=list)   # [(sql, lỗi)] các lần thử
+    history: list = field(default_factory=list)   # [(sql, error)] failed attempts
 
 
 def render_dictionary(d: dict, coverage: dict) -> str:
@@ -99,7 +99,7 @@ class Agent:
                     res.df = db.run_query(self.cfg["db_path"], safe_sql, self.cfg["query_timeout_s"])
                     res.sql, res.status, res.error = safe_sql, "ok", None
                     break
-                except Exception as e:     # guard / DuckDB / timeout -> đưa lỗi lại cho LLM
+                except Exception as e:     # guard / DuckDB / timeout -> feed the error back to the LLM
                     res.error = f"{type(e).__name__}: {e}"
                     res.history.append((raw_sql, res.error))
                     messages += [{"role": "assistant", "content": f"```sql\n{raw_sql}\n```"},

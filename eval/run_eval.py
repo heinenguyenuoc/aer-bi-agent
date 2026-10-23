@@ -1,12 +1,12 @@
-"""Đo execution accuracy: kết quả câu SQL do LLM sinh có khớp kết quả SQL đáp án không.
+"""Measure execution accuracy: does the result of the LLM-written SQL match the result of the reference (gold) SQL?
 
-  python eval/run_eval.py                       # dùng provider/model trong config.yaml
+  python eval/run_eval.py                       # use the provider/model in config.yaml
   python eval/run_eval.py --provider groq --model llama-3.3-70b-versatile
-  python eval/run_eval.py --gold-only           # chỉ kiểm tra SQL đáp án chạy được (không gọi LLM)
+  python eval/run_eval.py --gold-only           # only check that the gold SQL runs (no LLM calls)
 
-Cách so khớp: bỏ qua tên cột và thứ tự dòng, làm tròn số thực 2 chữ số. Agent được phép trả thêm cột thừa
-(mỗi cột của đáp án phải xuất hiện trong kết quả của agent, số dòng phải bằng nhau).
-Câu có expect_refusal: agent phải trả CANNOT_ANSWER.
+Matching rule: ignore column names and row order, round floats to 2 decimals. The agent may return extra columns
+(every gold column must appear in the agent's result, and the row counts must be equal).
+Questions with expect_refusal: the agent must reply CANNOT_ANSWER.
 """
 import argparse
 import json
@@ -94,7 +94,7 @@ def main() -> None:
         rows.append({"id": q["id"], "question": q["question"], "correct": bool(ok), "status": res.status,
                      "attempts": res.attempts, "latency_ms": res.latency_ms, "sql": res.sql, "error": res.error})
         print(f"{q['id']}: {'PASS' if ok else 'FAIL'}  ({res.status}, {res.attempts} attempt(s), {res.latency_ms} ms)")
-        time.sleep(0.5)    # nhẹ tay với rate limit của gói free
+        time.sleep(0.5)    # be gentle with free-tier rate limits
     acc = 100.0 * correct / len(questions)
     print(f"\nExecution accuracy: {correct}/{len(questions)} = {acc:.1f}%  [{agent.provider} / {agent.model}]")
 
