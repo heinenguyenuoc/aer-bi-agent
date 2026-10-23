@@ -1,0 +1,135 @@
+# Data dictionary = the agent's "semantic layer" for the OWID energy dataset.
+# Source: Our World in Data, Energy dataset (CC BY 4.0), compiled from the Energy Institute Statistical Review of World
+# Energy, Ember, the US EIA and others. Column descriptions follow the OWID codebook.
+
+database: DuckDB (SQL dialect duckdb)
+
+units:
+  energy_and_electricity: "TWh = terawatt-hours per year (1 TWh = 1,000 GWh = 1,000,000 MWh)"
+  per_capita: "kWh per person per year"
+  emissions: "ghg_emissions_mt = million tonnes of CO2-equivalent (Mt CO2e) per year"
+  carbon_intensity: "gCO2 per kWh of electricity generated"
+  shares: "percentages on a 0-100 scale"
+  gdp: "international-$ (PPP, 2011 prices)"
+
+time_rules:
+  - "The grain is one row per country per calendar year. year is an INTEGER (1965-2023)."
+  - "Coverage differs by indicator: electricity data starts in 1985 (nuclear, hydro, solar, wind from 1965), greenhouse gas emissions start in 2000, gdp and energy_per_gdp end in 2022. Missing values are NULL."
+  - "'Latest year' for an indicator means MAX(year) among rows where THAT indicator IS NOT NULL, not MAX(year) of the whole table."
+  - "'Since 2000' means year >= 2000. 'In the 2010s' means year BETWEEN 2010 AND 2019. A decade or period comparison uses the first and last year of that period."
+
+tables:
+  dim_country:
+    description: "One row per country or aggregate. is_country distinguishes sovereign countries from regional or income-group aggregates."
+    columns:
+      country: {type: VARCHAR, description: "Primary key. English name, e.g. 'Canada', 'United States', 'United Kingdom', 'Russia', 'South Korea'"}
+      iso_code: {type: VARCHAR, description: "ISO 3166 alpha-3 code, e.g. CAN, USA. NULL for aggregates"}
+      is_country: {type: BOOLEAN, description: "TRUE for the 220 countries/territories. FALSE for the 12 aggregates: World, Africa, Asia, Europe, North America, South America, Oceania, European Union (27), and four World Bank income groups"}
+
+  fact_energy_yearly:
+    description: >
+      Primary energy, fuel production and consumption, and emissions. One row per country per year.
+      Grain: (country, year). Primary energy figures use the substitution method.
+    columns:
+      country: {type: VARCHAR, description: "FK -> dim_country.country"}
+      year: {type: INTEGER, description: "Calendar year, 1965-2023"}
+      population: {type: BIGINT, description: "Population (number of people)"}
+      gdp_intl_usd: {type: DOUBLE, unit: "international-$", description: "Gross domestic product, PPP, 2011 prices. Ends in 2022"}
+      primary_energy_twh: {type: DOUBLE, unit: TWh, description: "Primary energy consumption (substitution method)"}
+      energy_per_capita_kwh: {type: DOUBLE, unit: kWh, description: "Primary energy consumption per person"}
+      energy_per_gdp_kwh: {type: DOUBLE, unit: "kWh per international-$", description: "Primary energy consumption per unit of GDP (energy intensity). Ends in 2022"}
+      fossil_share_energy_pct: {type: DOUBLE, unit: "%", description: "Fossil fuels (coal, oil, gas) as a share of primary energy"}
+      renewables_share_energy_pct: {type: DOUBLE, unit: "%", description: "Renewables as a share of primary energy"}
+      low_carbon_share_energy_pct: {type: DOUBLE, unit: "%", description: "Renewables plus nuclear as a share of primary energy"}
+      coal_production_twh: {type: DOUBLE, unit: TWh, description: "Coal production. NULL for countries that do not report production"}
+      oil_production_twh: {type: DOUBLE, unit: TWh, description: "Oil production. NULL for countries that do not report production"}
+      gas_production_twh: {type: DOUBLE, unit: TWh, description: "Natural gas production. NULL for countries that do not report production"}
+      coal_consumption_twh: {type: DOUBLE, unit: TWh, description: "Coal consumption"}
+      oil_consumption_twh: {type: DOUBLE, unit: TWh, description: "Oil consumption"}
+      gas_consumption_twh: {type: DOUBLE, unit: TWh, description: "Natural gas consumption"}
+      ghg_emissions_mt: {type: DOUBLE, unit: "Mt CO2e", description: "Greenhouse gas emissions from energy (CO2-equivalent). Starts in 2000"}
+
+  fact_electricity_yearly:
+    description: >
+      Electricity generation and demand, generation by source, shares and carbon intensity. One row per country per year.
+      Grain: (country, year). Mostly 1985 onward.
+    columns:
+      country: {type: VARCHAR, description: "FK -> dim_country.country"}
+      year: {type: INTEGER, description: "Calendar year, 1965-2023"}
+      generation_twh: {type: DOUBLE, unit: TWh, description: "Total electricity generated"}
+      demand_twh: {type: DOUBLE, unit: TWh, description: "Electricity demand (generation plus net imports)"}
+      net_imports_twh: {type: DOUBLE, unit: TWh, description: "Electricity imports minus exports. Negative = net exporter"}
+      per_capita_kwh: {type: DOUBLE, unit: kWh, description: "Electricity generation per person"}
+      coal_twh: {type: DOUBLE, unit: TWh, description: "Electricity from coal"}
+      gas_twh: {type: DOUBLE, unit: TWh, description: "Electricity from natural gas"}
+      oil_twh: {type: DOUBLE, unit: TWh, description: "Electricity from oil"}
+      nuclear_twh: {type: DOUBLE, unit: TWh, description: "Electricity from nuclear"}
+      hydro_twh: {type: DOUBLE, unit: TWh, description: "Electricity from hydropower"}
+      solar_twh: {type: DOUBLE, unit: TWh, description: "Electricity from solar"}
+      wind_twh: {type: DOUBLE, unit: TWh, description: "Electricity from wind"}
+      biofuel_twh: {type: DOUBLE, unit: TWh, description: "Electricity from bioenergy"}
+      other_renewables_twh: {type: DOUBLE, unit: TWh, description: "Electricity from other renewables (geothermal, wave, tidal)"}
+      fossil_twh: {type: DOUBLE, unit: TWh, description: "Electricity from fossil fuels (coal + gas + oil)"}
+      renewables_twh: {type: DOUBLE, unit: TWh, description: "Electricity from renewables (hydro, wind, solar, bioenergy, other)"}
+      low_carbon_twh: {type: DOUBLE, unit: TWh, description: "Electricity from renewables plus nuclear"}
+      fossil_share_pct: {type: DOUBLE, unit: "%", description: "Fossil fuels as a share of electricity generation"}
+      renewables_share_pct: {type: DOUBLE, unit: "%", description: "Renewables as a share of electricity generation"}
+      low_carbon_share_pct: {type: DOUBLE, unit: "%", description: "Renewables plus nuclear as a share of electricity generation"}
+      carbon_intensity_gco2_kwh: {type: DOUBLE, unit: "gCO2/kWh", description: "Greenhouse gases emitted per kWh of electricity generated (lower is cleaner)"}
+
+relationships:
+  - "fact_energy_yearly.country = dim_country.country"
+  - "fact_electricity_yearly.country = dim_country.country"
+  - "fact_energy_yearly and fact_electricity_yearly join on (country, year)"
+
+metrics:
+  source_share_of_electricity: "100.0 * <source>_twh / NULLIF(generation_twh, 0), e.g. hydro_twh. The *_share_pct columns already give fossil, renewables and low-carbon shares"
+  ghg_per_capita_tonnes: "ghg_emissions_mt * 1e6 / NULLIF(population, 0)   -- tonnes CO2e per person (join fact_energy_yearly only)"
+  energy_mix_by_fuel: "oil_consumption_twh, gas_consumption_twh, coal_consumption_twh are the fossil fuels in fact_energy_yearly"
+  growth_between_years: "100.0 * (value_end / NULLIF(value_start, 0) - 1), using two subqueries or a self-join on (country)"
+  cagr: "100.0 * (POWER(value_end / value_start, 1.0 / (end_year - start_year)) - 1)"
+
+rules:
+  - "Write exactly one SELECT statement in DuckDB dialect. No other statement types."
+  - "Use only the tables and columns listed here. Do not invent columns."
+  - "For rankings or comparisons of 'countries', join dim_country and filter is_country = TRUE, otherwise aggregates such as World, Asia or High-income countries appear in the results. Use the aggregates only when the user asks for the world, a continent or an income group."
+  - "When filtering by a country, use its exact English name from dim_country (e.g. 'United States', not 'USA')."
+  - "Aggregate to the needed grain BEFORE joining fact tables to each other; both fact tables have one row per (country, year)."
+  - "NULL means 'not reported'. Add IS NOT NULL on the indicator when ranking, averaging or finding the latest year, so missing values do not win or lose."
+  - "Only country-level data exists. There is no data for provinces, states or cities (e.g. Alberta): reply CANNOT_ANSWER."
+  - "Round ratios, shares and per-capita results to 2 decimals when returning them."
+  - "If the question cannot be answered from these tables, reply exactly: CANNOT_ANSWER: <short reason>"
+
+examples:
+  - question: "How many countries have data in the electricity table in 2020?"
+    sql: |
+      SELECT COUNT(DISTINCT e.country) AS countries
+      FROM fact_electricity_yearly e JOIN dim_country c USING (country)
+      WHERE e.year = 2020 AND c.is_country AND e.generation_twh IS NOT NULL
+  - question: "Top 5 countries by wind electricity in 2022"
+    sql: |
+      SELECT e.country, e.wind_twh
+      FROM fact_electricity_yearly e JOIN dim_country c USING (country)
+      WHERE e.year = 2022 AND c.is_country AND e.wind_twh IS NOT NULL
+      ORDER BY e.wind_twh DESC LIMIT 5
+  - question: "Japan's primary energy consumption by year since 2010"
+    sql: |
+      SELECT year, primary_energy_twh
+      FROM fact_energy_yearly
+      WHERE country = 'Japan' AND year >= 2010 AND primary_energy_twh IS NOT NULL
+      ORDER BY year
+  - question: "Which countries more than doubled their solar electricity between 2018 and 2022?"
+    sql: |
+      SELECT a.country, a.solar_twh AS solar_2018, b.solar_twh AS solar_2022,
+             ROUND(b.solar_twh / a.solar_twh, 2) AS ratio
+      FROM fact_electricity_yearly a
+      JOIN fact_electricity_yearly b ON a.country = b.country AND a.year = 2018 AND b.year = 2022
+      JOIN dim_country c ON c.country = a.country
+      WHERE c.is_country AND a.solar_twh > 0 AND b.solar_twh > 2 * a.solar_twh
+      ORDER BY ratio DESC LIMIT 20
+  - question: "Share of fossil fuels in global electricity in the latest year"
+    sql: |
+      SELECT year, fossil_share_pct
+      FROM fact_electricity_yearly
+      WHERE country = 'World' AND fossil_share_pct IS NOT NULL
+      ORDER BY year DESC LIMIT 1

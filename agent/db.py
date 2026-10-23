@@ -22,11 +22,11 @@ def run_query(path: str, sql: str, timeout_s: int = 30) -> pd.DataFrame:
         con.close()
 
 
-def data_coverage(path: str) -> dict:
+def data_coverage(path: str, sql: str, label: str = "") -> dict:
+    """Run a 'SELECT MIN(x), MAX(x)' query and return {'label', 'min', 'max'} for the prompt and the UI caption."""
     con = connect(path)
     try:
-        lo, hi = con.execute(
-            "SELECT MIN(production_month), MAX(production_month) FROM fact_well_production_monthly").fetchone()
-        return {"min_month": str(lo), "max_month": str(hi)}
+        lo, hi = con.execute(sql).fetchone()
+        return {"label": label, "min": str(lo), "max": str(hi)}
     finally:
         con.close()

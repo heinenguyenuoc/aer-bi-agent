@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Alberta Energy BI Agent</title>
-<meta name="description" content="Ask questions about Alberta oil and gas data in plain English. A text-to-SQL agent built with DuckDB, Streamlit and an LLM.">
+<title>Energy BI Agent</title>
+<meta name="description" content="Ask questions about world energy data (electricity mix, oil and gas, emissions, Canada included) in plain English. A text-to-SQL agent built with DuckDB, Streamlit and an LLM.">
 <style>
   :root { --bg:#fafaf7; --fg:#1d2320; --muted:#5b6560; --card:#fff; --line:#e3e6e1; --accent:#0f6b5c; --accent-fg:#fff; }
   @media (prefers-color-scheme: dark) {
@@ -33,8 +33,8 @@
 </head>
 <body>
 <main>
-  <h1>Alberta Energy BI Agent</h1>
-  <p class="lead">Ask questions about Alberta oil and gas data in plain English. The agent writes the SQL, checks it for safety, runs it, and shows you the table, chart and query.</p>
+  <h1>Energy BI Agent</h1>
+  <p class="lead">Ask questions about world energy data (electricity mix, oil and gas, emissions, Canada included) in plain English. The agent writes the SQL, checks it for safety, runs it, and shows you the table, chart and query.</p>
 
   <p>
     <a class="cta" href="REPLACE_WITH_YOUR_STREAMLIT_URL">Open the live demo</a>
@@ -42,13 +42,13 @@
   </p>
   <p class="note">The demo is hosted on a free tier and goes to sleep when nobody has used it for a while. If you see a
   "this app has gone to sleep" page, click <b>Yes, get this app back up!</b> and wait for it to start.
-  The demo runs on <b>synthetic data</b> (fictional operators, simulated volumes) shaped like Alberta Energy Regulator and Petrinex reporting.</p>
+  The demo uses real, public country-level data from <a href="https://github.com/owid/energy-data">Our World in Data (Energy dataset, CC BY 4.0)</a>, 1965-2023. It has no Alberta or provincial breakdown.</p>
 
   <h2>Try questions like</h2>
-  <div class="q">Top 5 operators by oil production in 2025</div>
-  <div class="q">Which fields have the highest water cut in the latest month?</div>
-  <div class="q">How did total gas flared change in 2025 compared with 2024?</div>
-  <div class="q">Correlation between monthly oil production and WTI price</div>
+  <div class="q">Top 10 countries by solar electricity in 2023</div>
+  <div class="q">How has Canada's electricity mix changed since 2000?</div>
+  <div class="q">Which countries have the lowest carbon intensity of electricity in 2022?</div>
+  <div class="q">Compare renewables share of electricity: Canada, United States, Germany, since 2010</div>
 
   <h2>How it works</h2>
   <div class="grid">

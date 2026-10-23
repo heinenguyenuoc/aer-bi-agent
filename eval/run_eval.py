@@ -62,13 +62,16 @@ def main() -> None:
     import os
     os.chdir(ROOT)
     cfg = load_config()
-    questions = yaml.safe_load(open(ROOT / "eval" / "questions.yaml", encoding="utf-8"))
+    questions = yaml.safe_load(open(ROOT / cfg["questions_path"], encoding="utf-8"))
     if a.limit:
         questions = questions[: a.limit]
 
     if a.gold_only:
         bad = 0
         for q in questions:
+            if q.get("expect_refusal"):
+                print(f"{q['id']}: skipped (expects refusal)")
+                continue
             try:
                 df = db.run_query(cfg["db_path"], guard.validate(q["sql"], set(yaml.safe_load(
                     open(cfg["dictionary_path"], encoding="utf-8"))["tables"]), 10000))
@@ -76,7 +79,8 @@ def main() -> None:
             except Exception as e:
                 bad += 1
                 print(f"{q['id']}: GOLD FAILS -> {e}")
-        print(f"\n{len(questions) - bad}/{len(questions)} gold queries run.")
+        n = sum(1 for q in questions if not q.get("expect_refusal"))
+        print(f"\n{n - bad}/{n} gold queries run.")
         sys.exit(1 if bad else 0)
 
     agent = Agent(cfg, a.provider, a.model)

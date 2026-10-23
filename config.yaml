@@ -1,6 +1,46 @@
-# General settings. Can be overridden with the LLM_PROVIDER / LLM_MODEL environment variables.
-db_path: data/aer.duckdb
-dictionary_path: data_dictionary.yaml
+# General settings. Can be overridden with the LLM_PROVIDER / LLM_MODEL / DATASET environment variables.
+dataset: owid             # owid (real, free, CC BY 4.0) | aer_synthetic (fake Alberta-shaped data)
+
+datasets:
+  owid:
+    db_path: data/owid.duckdb
+    dictionary_path: datasets/owid/data_dictionary.yaml
+    questions_path: datasets/owid/questions.yaml
+    build_script: datasets/owid/build.py
+    domain: "global energy (country-level yearly data from Our World in Data)"
+    coverage_sql: "SELECT MIN(year), MAX(year) FROM fact_energy_yearly"
+    coverage_label: "year"
+    ui:
+      sidebar_sub: "Global energy data · text-to-SQL"
+      hero_prefix: "What would you like to know about"
+      hero_highlight: "world energy"
+      source_note: "Data: Our World in Data, Energy dataset (CC BY 4.0). Country-level, 1965-2023; no Alberta or provincial data."
+      samples:
+        - "Top 10 countries by solar electricity in 2023"
+        - "How has Canada's electricity mix changed since 2000?"
+        - "Which countries have the lowest carbon intensity of electricity in 2022?"
+        - "Compare renewables share of electricity: Canada, United States, Germany, since 2010"
+        - "Greenhouse gas emissions per person in 2021 for the 10 biggest oil producers"
+  aer_synthetic:
+    db_path: data/aer.duckdb
+    dictionary_path: datasets/aer_synthetic/data_dictionary.yaml
+    questions_path: datasets/aer_synthetic/questions.yaml
+    build_script: scripts/generate_fake_data.py
+    domain: "Alberta oil and gas"
+    coverage_sql: "SELECT MIN(production_month), MAX(production_month) FROM fact_well_production_monthly"
+    coverage_label: "month"
+    ui:
+      sidebar_sub: "Alberta oil & gas (synthetic) · text-to-SQL"
+      hero_prefix: "What would you like to know about"
+      hero_highlight: "Alberta energy"
+      source_note: "Synthetic data shaped like AER/Petrinex records."
+      samples:
+        - "What was total oil production in the latest month?"
+        - "Top 5 operators by total oil production in 2025"
+        - "Monthly total oil production for 2025"
+        - "How many wells are in each status?"
+        - "Total gas flared in 2025 by region"
+
 log_path: logs/agent_log.sqlite
 
 max_rows: 1000            # add a LIMIT if the SQL has none

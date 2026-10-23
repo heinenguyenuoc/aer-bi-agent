@@ -15,6 +15,11 @@ from agent.logger import QueryLog
 def load_config(path: str = "config.yaml") -> dict:
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
+    name = os.getenv("DATASET", cfg["dataset"])
+    if name not in cfg["datasets"]:
+        raise ValueError(f"Unknown dataset '{name}'. Options: {', '.join(cfg['datasets'])}")
+    cfg["dataset"] = name
+    cfg.update(cfg["datasets"][name])      # flatten: db_path, dictionary_path, questions_path, ui, ...
     cfg["llm"]["provider"] = os.getenv("LLM_PROVIDER", cfg["llm"]["provider"])
     cfg["llm"]["model"] = os.getenv("LLM_MODEL", cfg["llm"].get("model") or "")
     return cfg
@@ -39,7 +44,7 @@ def render_dictionary(d: dict, coverage: dict) -> str:
     lines = [f"Database: {d['database']}", "", "UNITS:"]
     lines += [f"- {k}: {v}" for k, v in d["units"].items()]
     lines += ["", "TIME RULES:"] + [f"- {x}" for x in d["time_rules"]]
-    lines += [f"- Data coverage: production_month from {coverage['min_month']} to {coverage['max_month']}."]
+    lines += [f"- Data coverage: {coverage['label']} from {coverage['min']} to {coverage['max']}."]
     lines += ["", "TABLES:"]
     for t, spec in d["tables"].items():
         lines.append(f"\n{t}: {' '.join(str(spec['description']).split())}")
@@ -56,7 +61,7 @@ def render_dictionary(d: dict, coverage: dict) -> str:
 
 
 SYSTEM = (
-    "You are a senior data analyst who writes DuckDB SQL for an Alberta oil and gas database.\n"
+    "You are a senior data analyst who writes DuckDB SQL for a {domain} database.\n"
     "Given a business question, reply with ONE SQL SELECT query in a ```sql code block and nothing else.\n\n"
 )
 
@@ -74,8 +79,8 @@ class Agent:
         self.dictionary = load_dictionary(cfg["dictionary_path"])
         self.tables = set(self.dictionary["tables"])
         self.log = QueryLog(cfg["log_path"])
-        self.coverage = db.data_coverage(cfg["db_path"])
-        self.system_prompt = SYSTEM + render_dictionary(self.dictionary, self.coverage)
+        self.coverage = db.data_coverage(cfg["db_path"], cfg["coverage_sql"], cfg["coverage_label"])
+        self.system_prompt = SYSTEM.format(domain=cfg["domain"]) + render_dictionary(self.dictionary, self.coverage)
 
     def ask(self, question: str, log: bool = True) -> Result:
         t0 = time.time()

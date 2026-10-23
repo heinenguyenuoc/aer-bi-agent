@@ -1,0 +1,80 @@
+# Evaluation questions with reference ("gold") SQL for the OWID energy dataset. Run: python eval/run_eval.py
+# Kept different from the few-shot examples in data_dictionary.yaml to avoid leaking answers.
+- id: q01
+  question: "What was Canada's total electricity generation in 2022?"
+  sql: "SELECT generation_twh FROM fact_electricity_yearly WHERE country = 'Canada' AND year = 2022"
+- id: q02
+  question: "Top 10 countries by solar electricity in 2023"
+  sql: "SELECT e.country, e.solar_twh FROM fact_electricity_yearly e JOIN dim_country c USING (country) WHERE e.year = 2023 AND c.is_country AND e.solar_twh IS NOT NULL ORDER BY e.solar_twh DESC LIMIT 10"
+- id: q03
+  question: "How many countries produced any oil in 2021?"
+  sql: "SELECT COUNT(*) FROM fact_energy_yearly e JOIN dim_country c USING (country) WHERE e.year = 2021 AND c.is_country AND e.oil_production_twh > 0"
+- id: q04
+  question: "Canada's hydro, nuclear, wind and solar electricity in 2022"
+  sql: "SELECT hydro_twh, nuclear_twh, wind_twh, solar_twh FROM fact_electricity_yearly WHERE country = 'Canada' AND year = 2022"
+- id: q05
+  question: "Renewables share of electricity in Canada by year since 2000"
+  sql: "SELECT year, renewables_share_pct FROM fact_electricity_yearly WHERE country = 'Canada' AND year >= 2000 AND renewables_share_pct IS NOT NULL ORDER BY year"
+- id: q06
+  question: "Which 5 countries had the highest gas production in 2022?"
+  sql: "SELECT e.country FROM fact_energy_yearly e JOIN dim_country c USING (country) WHERE e.year = 2022 AND c.is_country AND e.gas_production_twh IS NOT NULL ORDER BY e.gas_production_twh DESC LIMIT 5"
+- id: q07
+  question: "Which countries have the lowest carbon intensity of electricity in 2022? Show the cleanest 5 that generate at least 50 TWh"
+  sql: "SELECT e.country, e.carbon_intensity_gco2_kwh FROM fact_electricity_yearly e JOIN dim_country c USING (country) WHERE e.year = 2022 AND c.is_country AND e.generation_twh >= 50 AND e.carbon_intensity_gco2_kwh IS NOT NULL ORDER BY e.carbon_intensity_gco2_kwh LIMIT 5"
+- id: q08
+  question: "Total world electricity generation in 2000 versus 2022"
+  sql: "SELECT year, generation_twh FROM fact_electricity_yearly WHERE country = 'World' AND year IN (2000, 2022) ORDER BY year"
+- id: q09
+  question: "Greenhouse gas emissions per person in 2021 for the 5 largest oil producers"
+  sql: "SELECT e.country, e.ghg_emissions_mt * 1e6 / e.population FROM fact_energy_yearly e WHERE e.country IN (SELECT e2.country FROM fact_energy_yearly e2 JOIN dim_country c USING (country) WHERE e2.year = 2021 AND c.is_country AND e2.oil_production_twh IS NOT NULL ORDER BY e2.oil_production_twh DESC LIMIT 5) AND e.year = 2021"
+- id: q10
+  question: "Average share of coal in electricity across all countries in 2022"
+  sql: "SELECT AVG(100.0 * e.coal_twh / NULLIF(e.generation_twh, 0)) FROM fact_electricity_yearly e JOIN dim_country c USING (country) WHERE e.year = 2022 AND c.is_country AND e.coal_twh IS NOT NULL AND e.generation_twh > 0"
+- id: q11
+  question: "Which country has the highest wind share of electricity in 2022, among countries generating at least 20 TWh?"
+  sql: "SELECT e.country FROM fact_electricity_yearly e JOIN dim_country c USING (country) WHERE e.year = 2022 AND c.is_country AND e.generation_twh >= 20 AND e.wind_twh IS NOT NULL ORDER BY e.wind_twh / e.generation_twh DESC LIMIT 1"
+- id: q12
+  question: "Canada's oil, gas and coal production in 2022"
+  sql: "SELECT oil_production_twh, gas_production_twh, coal_production_twh FROM fact_energy_yearly WHERE country = 'Canada' AND year = 2022"
+- id: q13
+  question: "Primary energy consumption per person in Canada, the United States and Germany in 2022"
+  sql: "SELECT country, energy_per_capita_kwh FROM fact_energy_yearly WHERE country IN ('Canada', 'United States', 'Germany') AND year = 2022"
+- id: q14
+  question: "By how much did Canada's wind electricity grow between 2010 and 2022 (in TWh)?"
+  sql: "SELECT b.wind_twh - a.wind_twh FROM fact_electricity_yearly a JOIN fact_electricity_yearly b ON a.country = b.country WHERE a.country = 'Canada' AND a.year = 2010 AND b.year = 2022"
+- id: q15
+  question: "How many countries generated more than half of their electricity from renewables in 2022?"
+  sql: "SELECT COUNT(*) FROM fact_electricity_yearly e JOIN dim_country c USING (country) WHERE e.year = 2022 AND c.is_country AND e.renewables_share_pct > 50"
+- id: q16
+  question: "World primary energy consumption by year since 2010"
+  sql: "SELECT year, primary_energy_twh FROM fact_energy_yearly WHERE country = 'World' AND year >= 2010 ORDER BY year"
+- id: q17
+  question: "Which continents (Africa, Asia, Europe, North America, South America, Oceania) had the highest fossil share of electricity in 2022?"
+  sql: "SELECT country, fossil_share_pct FROM fact_electricity_yearly WHERE country IN ('Africa', 'Asia', 'Europe', 'North America', 'South America', 'Oceania') AND year = 2022 ORDER BY fossil_share_pct DESC"
+- id: q18
+  question: "Top 5 net electricity exporters in 2022"
+  sql: "SELECT e.country, e.net_imports_twh FROM fact_electricity_yearly e JOIN dim_country c USING (country) WHERE e.year = 2022 AND c.is_country AND e.net_imports_twh IS NOT NULL ORDER BY e.net_imports_twh LIMIT 5"
+- id: q19
+  question: "Canada's nuclear electricity by year from 2000 to 2022"
+  sql: "SELECT year, nuclear_twh FROM fact_electricity_yearly WHERE country = 'Canada' AND year BETWEEN 2000 AND 2022 AND nuclear_twh IS NOT NULL ORDER BY year"
+- id: q20
+  question: "Which countries had a population above 100 million in 2022?"
+  sql: "SELECT e.country FROM fact_energy_yearly e JOIN dim_country c USING (country) WHERE e.year = 2022 AND c.is_country AND e.population > 100000000"
+- id: q21
+  question: "Latest year with greenhouse gas emissions data for Canada, and the value"
+  sql: "SELECT year, ghg_emissions_mt FROM fact_energy_yearly WHERE country = 'Canada' AND ghg_emissions_mt IS NOT NULL ORDER BY year DESC LIMIT 1"
+- id: q22
+  question: "Average carbon intensity of electricity in 2022 by income group"
+  sql: "SELECT country, carbon_intensity_gco2_kwh FROM fact_electricity_yearly WHERE country IN ('High-income countries', 'Upper-middle-income countries', 'Lower-middle-income countries', 'Low-income countries') AND year = 2022"
+- id: q23
+  question: "Which 3 countries consume the most coal?"
+  sql: "SELECT e.country FROM fact_energy_yearly e JOIN dim_country c USING (country) WHERE c.is_country AND e.year = (SELECT MAX(year) FROM fact_energy_yearly WHERE coal_consumption_twh IS NOT NULL) AND e.coal_consumption_twh IS NOT NULL ORDER BY e.coal_consumption_twh DESC LIMIT 3"
+- id: q24
+  question: "Energy intensity (kWh per dollar of GDP) of Canada, Japan and Germany in 2020"
+  sql: "SELECT country, energy_per_gdp_kwh FROM fact_energy_yearly WHERE country IN ('Canada', 'Japan', 'Germany') AND year = 2020"
+- id: q25
+  question: "Countries whose fossil share of electricity fell by more than 20 percentage points between 2010 and 2022"
+  sql: "SELECT a.country FROM fact_electricity_yearly a JOIN fact_electricity_yearly b ON a.country = b.country AND a.year = 2010 AND b.year = 2022 JOIN dim_country c ON c.country = a.country WHERE c.is_country AND a.fossil_share_pct - b.fossil_share_pct > 20"
+- id: q26
+  question: "What was oil production in Alberta last year?"
+  expect_refusal: true

@@ -1,6 +1,6 @@
-# Alberta Energy BI Agent (free-stack text-to-SQL)
+# Energy BI Agent (free-stack text-to-SQL)
 
-A natural-language BI agent for Alberta upstream oil and gas data, built entirely on free tools.
+A natural-language BI agent for global energy data (real data from Our World in Data), built entirely on free tools.
 Ask a question in plain English → the agent writes SQL → the SQL is checked for safety → it runs on DuckDB → you get a table, a chart and the SQL.
 
 ```
@@ -15,7 +15,7 @@ Question ──► prompt = data dictionary (YAML) + few-shot ──► LLM ─�
 |---|---|---|
 | Data warehouse | DuckDB (single file) | Amazon Redshift |
 | LLM | Gemini / Groq / OpenRouter free tier, local Ollama, or Claude | Bedrock + Claude |
-| Data dictionary | `data_dictionary.yaml` | Dictionary stored in S3 |
+| Data dictionary | `datasets/<name>/data_dictionary.yaml` | Dictionary stored in S3 |
 | Semantic layer + drift check | `agent/drift.py` | Auto-updating semantic layer |
 | UI + Admin | Streamlit | Amplify + admin console |
 
@@ -24,7 +24,7 @@ Question ──► prompt = data dictionary (YAML) + few-shot ──► LLM ─�
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/generate_fake_data.py        # generates synthetic data -> data/aer.duckdb
+python datasets/owid/build.py               # builds data/owid.duckdb (the app also does this on first start)
 export GEMINI_API_KEY=...                   # or GROQ_API_KEY, see below
 streamlit run app.py
 ```
@@ -49,30 +49,23 @@ python eval/run_eval.py --provider groq --model llama-3.3-70b-versatile
 python eval/run_eval.py --provider gemini
 python eval/run_eval.py --gold-only      # check the reference SQL only, no LLM calls
 ```
-26 questions (25 with reference SQL plus 1 out-of-scope question the agent must refuse). The metric is execution accuracy: the agent's result must match the reference SQL's result (column names and row order ignored, floats rounded to 2 decimals, extra columns allowed). Results are saved in `eval/results/` and shown in the Admin "Eval results" tab. Extend the set to 30–50 questions in `eval/questions.yaml`, and report accuracy per model and per difficulty group (multi-table joins, time comparisons) rather than a single number.
+26 questions for the OWID dataset (25 with reference SQL plus 1 out-of-scope question the agent must refuse). The metric is execution accuracy: the agent's result must match the reference SQL's result (column names and row order ignored, floats rounded to 2 decimals, extra columns allowed). Results are saved in `eval/results/` and shown in the Admin "Eval results" tab. Extend the set to 30–50 questions in `datasets/<name>/questions.yaml`, and report accuracy per model and per difficulty group (multi-table joins, time comparisons) rather than a single number.
 
-## Data: synthetic vs real
+## Data
 
-**The demo uses synthetic data** (`scripts/generate_fake_data.py`): fictional operators, production simulated with Arps decline curves, made-up WTI/AECO prices. Structure and units (m³ for oil/water, e³m³ for gas) follow the Petrinex/AER convention, so moving to real data only requires replacing the loading step.
+Two datasets ship with the repo; pick one with `dataset:` in `config.yaml` (or the `DATASET` env var).
 
-**Real public sources** (per the AER products catalogue; verify formats and terms before use):
-- Petrinex Alberta Public Data: Well Infrastructure, Well Licence, Facility Infrastructure, Well-to-Facility Link, Business Associate, Field/Pool codes (updated monthly), and Conventional Volumetric Data (volumes by **facility**, current year plus the previous four years, oil sands excluded).
-- AER ST37 (list of wells), ST102 (facility list), ST103 (field/pool codes), ST104 (BA codes), ST60 (batteries: monthly oil, gas, water, flaring and venting).
+**`owid` (default, real and free).** [Our World in Data energy dataset](https://github.com/owid/energy-data), licence **CC BY 4.0** (attribution required: "Our World in Data, Energy dataset"). It is compiled from the Energy Institute Statistical Review of World Energy, Ember, the US EIA and others. `datasets/owid/build.py` turns the CSV into three DuckDB tables: `dim_country`, `fact_energy_yearly` (primary energy, fuel production/consumption, emissions, 1965-2023) and `fact_electricity_yearly` (generation by source, shares, carbon intensity). It is **country-level**: there is no Alberta or provincial breakdown, so provincial questions are refused. Canada is included, e.g. its renewables share of electricity.
 
-**Important limitation:** monthly production **per well** (Well Production Data File – All Alberta) is a paid AER product (the catalogue lists $750 per single file), not open data. With real data, the useful table is therefore `fact_facility_monthly` (matches the ST60/Petrinex columns) plus the dimension tables. `fact_well_production_monthly` exists only in the synthetic data; when switching to real data, remove it from `data_dictionary.yaml` and adjust the related eval questions.
+**`aer_synthetic` (optional, fake).** Alberta-shaped synthetic data (`scripts/generate_fake_data.py`): fictional operators, Arps decline curves, made-up prices. Use it only to show the shape of an upstream oil and gas model. Real per-well AER production data is a paid product, not open data; real Alberta public data (Petrinex, AER ST37/ST60/ST102) would need its own `datasets/<name>/` folder with a build script, a dictionary and questions.
 
-Steps to switch to real data:
-1. Download CSVs from Petrinex/AER and load them into DuckDB (`CREATE TABLE ... AS SELECT * FROM read_csv(...)`) using the table and column names in the dictionary (or edit the dictionary to match).
-2. Run the **Schema drift** tab in the Admin console to see which columns differ between the dictionary and the database.
-3. Re-run the eval and update `eval/questions.yaml` for the real data.
-
-AER states that its files may be used for internal processing or for clients, but copying a whole file or a large part of it for resale is not permitted. Do not commit real data files to a public repository (`.gitignore` already excludes `data/*.duckdb`).
+To add your own dataset: create `datasets/<name>/` with `build.py`, `data_dictionary.yaml`, `questions.yaml`, add an entry under `datasets:` in `config.yaml`, then run the **Schema drift** tab in Admin to compare the dictionary with the database.
 
 ## Deploy (run without your laptop)
 
 Recommended: **Streamlit Community Cloud** (free). According to Streamlit's documentation, an app with no traffic for 12 hours goes to sleep; a visitor sees a "gone to sleep" page and clicks "Yes, get this app back up!" to wake it (anyone who can view the app can do this). That page is shown by the platform and `app.py` cannot change it. Put `landing.html` (a static landing page that explains this) on GitHub Pages or your portfolio and use that link in your CV.
 
-1. Push the repo to GitHub. You do not need to commit `data/aer.duckdb`: the app generates the synthetic data when the database is missing.
+1. Push the repo to GitHub. `data/owid.duckdb` (2 MB) can be committed; if it is missing the app rebuilds it by downloading the CSV from GitHub.
 2. On share.streamlit.io choose New app, then the repo, branch and file `app.py`.
 3. Open the app's Secrets and paste (see `.streamlit/secrets.toml.example`):
    ```toml
@@ -96,7 +89,9 @@ ui.py                     theme (Quicksand + pastel), number formatting, pastel 
 assets/loader.json        Lottie loading animation
 landing.html              static landing page for GitHub Pages / portfolio
 config.yaml               paths, limits, default provider
-data_dictionary.yaml      semantic layer: tables, columns, units, metrics, rules, few-shot examples
+datasets/owid/             build.py, data_dictionary.yaml (semantic layer), questions.yaml (eval)
+datasets/aer_synthetic/   optional fake Alberta data: dictionary + questions
+  (dictionary)            semantic layer: tables, columns, units, metrics, rules, few-shot examples
 agent/pipeline.py         prompt, generate/repair SQL loop, logging
 agent/guard.py            SQL validation (sqlglot)
 agent/db.py               read-only DuckDB + timeout
@@ -104,7 +99,7 @@ agent/llm.py              LLM client (urllib, no SDK needed)
 agent/logger.py           SQLite log, feedback
 agent/drift.py            compares the dictionary with the real schema
 scripts/generate_fake_data.py
-eval/questions.yaml, eval/run_eval.py
+eval/run_eval.py
 ```
 
 ## Ideas for next steps

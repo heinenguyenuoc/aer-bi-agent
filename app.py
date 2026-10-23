@@ -17,7 +17,7 @@ from agent import llm
 from agent.drift import check, load_dictionary
 from agent.pipeline import Agent, load_config
 
-st.set_page_config(page_title="Alberta Energy BI Agent", page_icon="⛽", layout="wide")
+st.set_page_config(page_title="Energy BI Agent", page_icon="⛽", layout="wide")
 ui.inject_css()
 
 # Streamlit Cloud secrets -> environment variables (so llm.py can read the keys). Ignored if there are no secrets.
@@ -32,23 +32,21 @@ cfg = load_config()
 MAX_PER_SESSION = int(cfg.get("max_questions_per_session", 15))
 MAX_PER_DAY = int(cfg.get("max_queries_per_day", 200))
 
-SAMPLES = [
-    "Top 5 operators by oil production in 2025",
-    "Monthly total oil production for the last 12 months",
-    "Which fields have the highest water cut in the latest month?",
-    "How did total gas flared change in 2025 compared with 2024?",
-    "Correlation between monthly oil production and WTI price",
-]
+UI = cfg["ui"]
+SAMPLES = UI["samples"]
 
 
 def ensure_data() -> None:
-    """If the database is missing (e.g. first deploy), generate the synthetic data (takes a few seconds)."""
+    """If the database is missing (e.g. first deploy), build it with the dataset's build script (a few seconds)."""
     if pathlib.Path(cfg["db_path"]).exists():
         return
-    spec = importlib.util.spec_from_file_location("generate_fake_data", "scripts/generate_fake_data.py")
+    spec = importlib.util.spec_from_file_location("dataset_build", cfg["build_script"])
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    mod.main(cfg["db_path"], 42, 3000, 40)
+    if cfg["dataset"] == "aer_synthetic":
+        mod.main(cfg["db_path"], 42, 3000, 40)
+    else:
+        mod.main(cfg["db_path"])      # owid: uses data/owid-energy-data.csv, or downloads it from GitHub
 
 
 @st.cache_resource
@@ -67,7 +65,7 @@ def is_admin() -> bool:
 
 # ---------------------------------------------------------------- sidebar
 with st.sidebar:
-    ui.brand_sidebar()
+    ui.brand_sidebar(UI["sidebar_sub"])
     pages = ["Ask", "Admin"]
     page = st.radio("Page", pages, label_visibility="collapsed")
     st.divider()
@@ -80,7 +78,7 @@ with st.sidebar:
         model = st.text_input("Model", value=cfg["llm"]["model"] if provider == default_provider
                               else llm.default_model(provider), key=f"model_{provider}",
                               help="Model names change over time: check the provider's model list.")
-    st.caption("This demo runs on **synthetic data** (fictional operators, simulated volumes).")
+    st.caption(UI["source_note"])
 
 # ---------------------------------------------------------------- start agent
 boot = st.empty()      # fixed slot, so the page layout does not shift between the first run and later runs
@@ -136,16 +134,16 @@ def show_result(res, key: str) -> None:
 
 # ---------------------------------------------------------------- Ask
 if page == "Ask":
-    ui.hero()
-    st.caption(f"Data from {agent.coverage['min_month']} to {agent.coverage['max_month']} · "
-               f"units: oil/water in m³, gas in e³m³ (thousand m³). English questions work best.")
+    ui.hero(UI["hero_prefix"], UI["hero_highlight"])
+    st.caption(f"Data coverage ({agent.coverage['label']}): {agent.coverage['min']} to {agent.coverage['max']} · "
+               "English questions work best. Energy is in TWh unless stated.")
     st.session_state.setdefault("history", [])
     clicked = None
     for row in (SAMPLES[:3], SAMPLES[3:]):
         for col, sample in zip(st.columns(3), row):
             if col.button(sample, width="stretch", key=f"sample_{sample}"):
                 clicked = sample
-    question = st.chat_input("Ask a question about wells, facilities, production, flaring, prices...") or clicked
+    question = st.chat_input("Ask a question about electricity, energy mix, emissions...") or clicked
 
     if question:
         asked = len(st.session_state["history"])

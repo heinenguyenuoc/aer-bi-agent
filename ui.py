@@ -1,4 +1,5 @@
 """UI helpers: theme CSS (Quicksand + pastel), number formatting, pastel charts and the Lottie loader."""
+import html
 import json
 import pathlib
 import re
@@ -63,13 +64,13 @@ def inject_css() -> None:
     st.markdown(CSS.replace("__FONT_URL__", FONT_URL).replace("__INK__", INK), unsafe_allow_html=True)
 
 
-def brand_sidebar() -> None:
+def brand_sidebar(sub: str = "text-to-SQL") -> None:
     st.markdown('<div class="brand"><span class="brand-ico">⛽</span><span class="brand-name">Energy BI Agent</span></div>'
-                '<div class="brand-sub">Alberta oil &amp; gas · text-to-SQL</div>', unsafe_allow_html=True)
+                f'<div class="brand-sub">{html.escape(sub)}</div>', unsafe_allow_html=True)
 
 
-def hero() -> None:
-    st.markdown('<div class="hero-title">What would you like to know about <span class="grad">Alberta energy</span>?</div>'
+def hero(prefix: str, highlight: str) -> None:
+    st.markdown(f'<div class="hero-title">{html.escape(prefix)} <span class="grad">{html.escape(highlight)}</span>?</div>'
                 '<div class="hero-sub">Ask in plain English. The agent writes the SQL, runs it, and shows you the answer.</div>',
                 unsafe_allow_html=True)
 
@@ -124,20 +125,24 @@ def pastel_chart(df: pd.DataFrame):
     is_time = pd.api.types.is_datetime64_any_dtype(df[xcol])
     if not is_time and pd.api.types.is_numeric_dtype(df[xcol]) and not df[xcol].between(1900, 2100).all():
         return None   # numeric x that is not a year: a bar chart would be meaningless
-    xs = df[xcol].astype("string") if not is_time else df[xcol]
+    year_axis = (not is_time and pd.api.types.is_integer_dtype(df[xcol]) and len(df) >= 6)   # integer years -> time series
+    if year_axis:
+        is_time, xs = True, pd.to_datetime(df[xcol].astype(str), format="%Y")
+    else:
+        xs = df[xcol].astype("string") if not is_time else df[xcol]
     long = pd.concat([pd.DataFrame({"x": xs, "metric": str(c), "value": df[c].astype(float)}) for c in ycols],
                      ignore_index=True)
     multi = len(ycols) > 1
     color = alt.Color("metric:N", scale=alt.Scale(range=PASTEL), legend=alt.Legend(title=None, orient="bottom") if multi else None)
     value_axis = alt.Axis(format=",.2~f", title=None, grid=True, gridColor="#EAF0F6", domain=False, ticks=False,
                           labelColor="#6B8299", labelFontSize=12)
-    tip = [alt.Tooltip("x:T" if is_time else "x:N", title=str(xcol)), alt.Tooltip("metric:N", title="series"),
+    tip = [alt.Tooltip("x:T" if is_time else "x:N", title=str(xcol), format="%Y" if year_axis else ""), alt.Tooltip("metric:N", title="series"),
            alt.Tooltip("value:Q", title="value", format=",.2f")]
     base = alt.Chart(long)
     if is_time:
         chart = base.mark_area(line={"strokeWidth": 3}, point={"filled": True, "size": 60}, opacity=0.45,
                                interpolate="monotone").encode(
-            x=alt.X("x:T", title=None, axis=alt.Axis(labelColor="#6B8299", grid=False, domain=False, ticks=False)),
+            x=alt.X("x:T", title=None, axis=alt.Axis(labelColor="#6B8299", grid=False, domain=False, ticks=False, format="%Y" if year_axis else None)),
             y=alt.Y("value:Q", axis=value_axis, stack=None), color=color, tooltip=tip)
     else:
         horizontal = len(df) <= 15 and xs.str.len().max() > 12
